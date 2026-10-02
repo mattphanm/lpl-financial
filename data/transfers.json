@@ -1,0 +1,32 @@
+[
+  {
+    "id": "xfer-5001",
+    "accountId": "acct-1001",
+    "deliveringFirm": "Fidelity",
+    "receivingFirm": "LPL Financial",
+    "assetValue": 125000.5,
+    "status": "in_review",
+    "createdAt": "2026-09-28T14:03:00.000Z",
+    "updatedAt": "2026-09-29T09:12:00.000Z"
+  },
+  {
+    "id": "xfer-5002",
+    "accountId": "acct-1002",
+    "deliveringFirm": "Charles Schwab",
+    "receivingFirm": "LPL Financial",
+    "assetValue": 48250.0,
+    "status": "needs_info",
+    "createdAt": "2026-09-30T10:45:00.000Z",
+    "updatedAt": "2026-10-01T16:20:00.000Z"
+  },
+  {
+    "id": "xfer-5003",
+    "accountId": "acct-1003",
+    "deliveringFirm": "Vanguard",
+    "receivingFirm": "LPL Financial",
+    "assetValue": 310750.75,
+    "status": "escalated",
+    "createdAt": "2026-10-01T08:30:00.000Z",
+    "updatedAt": "2026-10-02T07:05:00.000Z"
+  }
+]

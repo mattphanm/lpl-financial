@@ -1,0 +1,8 @@
+{
+  "sampleReview": {
+    "ready": false,
+    "missingRequirements": ["signed_transfer_authorization", "recent_statement"],
+    "escalationReasons": ["asset_value_exceeds_250k"],
+    "summary": "Transfer cannot proceed until the signed authorization and a statement from the last 90 days are received. Flagged for review due to asset value above the $250k threshold."
+  }
+}
