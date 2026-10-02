@@ -90,16 +90,16 @@ supposed to do about it*. They combine only at Analyze time, never in storage.
 ## TODO — split
 
 ### A — AI / Bedrock  (critical path; unblocked)
-- [ ] `ragService` — query KB, return source-cited chunks
-- [ ] `contextService` — bundle DynamoDB facts + risk + RAG (doc section 18)
-- [ ] `aiService` — Converse call, structured JSON out (section 20), guardrails (section 21)
-- [ ] Deliver: `analyzeTransfer(ctx)`, `generateFollowUp(ctx)`
+- [x] `ragService` — query KB, return source-cited chunks
+- [x] `contextService` — bundle DynamoDB facts + risk + RAG (doc section 18)
+- [x] `aiService` — Converse call, structured JSON out (section 20), guardrails (section 21)
+- [x] Deliver: `analyzeTransfer(ctx)`, `generateFollowUp(ctx)`
 
 ### B — Backend API  (pairs with A)
-- [ ] `POST /api/transfers/:id/analyze`
-- [ ] `POST /api/transfers/:id/follow-up`
-- [ ] `GET /api/clients/:id`  (reuse repositories)
-- [ ] `GET /api/reports`  (compute metrics, section 13)
+- [x] `POST /api/transfers/:id/analyze`
+- [x] `POST /api/transfers/:id/follow-up`
+- [x] `GET /api/clients/:id`  (reuse repositories)
+- [x] `GET /api/reports`  (compute metrics, section 13)
 
 ### C — Frontend: dashboard + detail  (unblocked now)
 - [ ] Transfers dashboard  <- `GET /api/transfers`
