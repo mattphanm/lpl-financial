@@ -147,3 +147,46 @@ export interface TransferDetail {
   interactions: Interaction[];
   risk: RiskResult;
 }
+
+/** A client's transfer with its computed risk, for the client detail view. */
+export interface ClientTransferSummary {
+  transfer: Transfer;
+  accountType: string;
+  risk: RiskResult;
+  daysSinceActivity: number;
+}
+
+/** Full detail payload (GET /api/clients/:id). */
+export interface ClientDetail {
+  client: Client;
+  accounts: Account[];
+  transfers: ClientTransferSummary[];
+  interactions: Interaction[];
+  /** Highest risk level across the client's active transfers. */
+  overallRisk: RiskLevel;
+}
+
+/** Portfolio-wide metrics (GET /api/reports). */
+export interface ReportsSummary {
+  /** Total number of transfers. */
+  totalTransfers: number;
+  /** Count of transfers per status. */
+  byStatus: Record<TransferStatus, number>;
+  /** Count of transfers per risk level. */
+  byRisk: Record<RiskLevel, number>;
+  /** Transfers with at least one required, missing, blocking requirement. */
+  blockedCount: number;
+  /** Transfers not COMPLETE with >= 5 days since last activity. */
+  stalledCount: number;
+  /** Sum of transferAmount across all transfers. */
+  totalTransferAmount: number;
+  /** Sum of transferAmount for transfers at HIGH risk. */
+  atRiskTransferAmount: number;
+  /** Average days since last activity across non-complete transfers. */
+  avgDaysSinceActivity: number;
+  /** Completion rate = COMPLETE / total (0..1). */
+  completionRate: number;
+  /** The highest-risk transfers needing attention, newest-stalled first. */
+  attentionNeeded: DashboardTransfer[];
+}
+
