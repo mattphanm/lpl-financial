@@ -1,5 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { transfersRouter } from "./transfers.js";
+import { clientsRouter } from "./clients.js";
+import { reportsRouter } from "./reports.js";
 
 export function registerRoutes(app: Express): void {
   app.get("/api/health", (_req: Request, res: Response) => {
@@ -7,4 +9,6 @@ export function registerRoutes(app: Express): void {
   });
 
   app.use("/api/transfers", transfersRouter);
+  app.use("/api/clients", clientsRouter);
+  app.use("/api/reports", reportsRouter);
 }
