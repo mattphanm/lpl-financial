@@ -5,23 +5,24 @@ export const transfersRouter = Router();
 
 const service = new TransferService();
 
+// GET /api/transfers — dashboard list
 transfersRouter.get("/", async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const transfers = await service.list();
-    res.json(transfers);
+    res.json(await service.listDashboard());
   } catch (err) {
     next(err);
   }
 });
 
+// GET /api/transfers/:id — full detail
 transfersRouter.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const transfer = await service.getById(req.params.id);
-    if (!transfer) {
+    const detail = await service.getDetail(String(req.params.id));
+    if (!detail) {
       res.status(404).json({ error: "Transfer not found" });
       return;
     }
-    res.json(transfer);
+    res.json(detail);
   } catch (err) {
     next(err);
   }

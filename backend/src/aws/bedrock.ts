@@ -5,4 +5,4 @@ const region = process.env.BEDROCK_REGION ?? process.env.AWS_REGION ?? "us-east-
 export const bedrock = new BedrockRuntimeClient({ region });
 
 export const BEDROCK_MODEL_ID =
-  process.env.BEDROCK_MODEL_ID ?? "anthropic.claude-3-5-sonnet-20240620-v1:0";
+  process.env.BEDROCK_MODEL_ID ?? "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
