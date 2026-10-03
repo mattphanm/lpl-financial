@@ -78,6 +78,26 @@ type TransferDetail = {
   risk: RiskAssessment;
 };
 
+type AnalysisCitation = {
+  ref: string;
+  source: string;
+  quote: string;
+};
+
+type Analysis = {
+  summary: string;
+  riskExplanation: string;
+  recommendedAction: string;
+  nextSteps: string[];
+  citations: AnalysisCitation[];
+  meta: {
+    retrievalQuery: string;
+    sources: string[];
+  };
+};
+
+type AnalysisStatus = "idle" | "loading" | "success" | "error";
+
 type RequirementState = "done" | "missing" | "pending";
 
 const RISK_LABELS: Record<RiskLevel, string> = {
@@ -162,6 +182,28 @@ function getRequirementState(status: string): RequirementState {
   return "pending";
 }
 
+async function readErrorMessage(response: Response) {
+  try {
+    const body: unknown = await response.json();
+
+    if (body && typeof body === "object") {
+      const { error, message } = body as { error?: unknown; message?: unknown };
+
+      if (typeof error === "string" && error) {
+        return error;
+      }
+
+      if (typeof message === "string" && message) {
+        return message;
+      }
+    }
+  } catch {
+    // Non-JSON error body; fall through to the status-based message.
+  }
+
+  return `The analysis service responded with status ${response.status}.`;
+}
+
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -188,10 +230,79 @@ function TransferDrawer({
   onRetry,
 }: TransferDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const analysisHeadingRef = useRef<HTMLHeadingElement>(null);
+  const analysisControllerRef = useRef<AbortController | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
+  const [analysisError, setAnalysisError] = useState("");
 
   useEffect(() => {
     closeButtonRef.current?.focus();
+
+    return () => analysisControllerRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    if (analysisStatus === "success") {
+      analysisHeadingRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      analysisHeadingRef.current?.focus({ preventScroll: true });
+    }
+  }, [analysisStatus]);
+
+  const runAnalysis = () => {
+    if (!detail || analysisControllerRef.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+    analysisControllerRef.current = controller;
+    setAnalysisStatus("loading");
+    setAnalysisError("");
+
+    fetch(
+      `${API_BASE}/api/transfers/${encodeURIComponent(detail.transfer.transferId)}/analyze`,
+      { method: "POST", signal: controller.signal },
+    )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response));
+        }
+
+        return response.json() as Promise<Analysis>;
+      })
+      .then((data) => {
+        setAnalysis(data);
+        setAnalysisStatus("success");
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setAnalysisError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Please check your connection and try again.",
+        );
+        setAnalysisStatus("error");
+      })
+      .finally(() => {
+        if (analysisControllerRef.current === controller) {
+          analysisControllerRef.current = null;
+        }
+      });
+  };
+
+  const scrollToAnalysis = () => {
+    analysisHeadingRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    analysisHeadingRef.current?.focus({ preventScroll: true });
+  };
 
   const blockers = useMemo(
     () =>
@@ -379,6 +490,98 @@ function TransferDrawer({
                 </section>
               )}
 
+              {analysis && analysisStatus === "success" && (
+                <section
+                  className="ai-analysis"
+                  aria-labelledby="ai-analysis-title"
+                >
+                  <header className="ai-analysis-header">
+                    <h3
+                      id="ai-analysis-title"
+                      ref={analysisHeadingRef}
+                      tabIndex={-1}
+                    >
+                      <span className="ai-mark" aria-hidden="true">
+                        ✦
+                      </span>
+                      AI Analysis
+                    </h3>
+                    <span className="ai-tag">AI-assisted</span>
+                  </header>
+
+                  <p className="ai-summary">{analysis.summary}</p>
+
+                  <div className="ai-recommendation">
+                    <h4>Recommended action</h4>
+                    <p>{analysis.recommendedAction}</p>
+                  </div>
+
+                  <div className="ai-block">
+                    <h4>Why this transfer is at risk</h4>
+                    <p>{analysis.riskExplanation}</p>
+                  </div>
+
+                  {analysis.nextSteps.length > 0 && (
+                    <div className="ai-block">
+                      <h4>Next steps</h4>
+                      <ol className="ai-steps">
+                        {analysis.nextSteps.map((step, index) => (
+                          <li key={`${index}-${step}`}>
+                            <span className="ai-step-number" aria-hidden="true">
+                              {index + 1}
+                            </span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+
+                  {analysis.citations.length > 0 && (
+                    <div className="ai-block">
+                      <h4>
+                        Grounded in firm procedures
+                        <span className="drawer-count">
+                          {analysis.citations.length}{" "}
+                          {analysis.citations.length === 1
+                            ? "citation"
+                            : "citations"}
+                          {analysis.meta.sources.length > 0 &&
+                            ` · ${analysis.meta.sources.length} ${
+                              analysis.meta.sources.length === 1
+                                ? "source"
+                                : "sources"
+                            }`}
+                        </span>
+                      </h4>
+                      <ul className="ai-citations">
+                        {analysis.citations.map((citation, index) => (
+                          <li
+                            key={`${citation.ref}-${index}`}
+                            className="ai-citation"
+                          >
+                            <div className="ai-citation-source">
+                              <span className="ai-citation-ref">
+                                {citation.ref}
+                              </span>
+                              <span className="ai-citation-file">
+                                {citation.source}
+                              </span>
+                            </div>
+                            <blockquote>{citation.quote}</blockquote>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="ai-disclaimer">
+                    AI-assisted analysis grounded in transfer data and firm
+                    procedures. Advisor review required.
+                  </p>
+                </section>
+              )}
+
               {detail.risk.reasons.length > 0 && (
                 <section className="drawer-section">
                   <h3>Risk reasons</h3>
@@ -560,15 +763,55 @@ function TransferDrawer({
         </div>
 
         <footer className="drawer-footer">
-          <button
-            type="button"
-            className="drawer-primary-button"
-            disabled
-            aria-label="Analyze with AI (coming soon)"
-            title="Coming soon"
-          >
-            Analyze with AI
-          </button>
+          {analysisStatus === "loading" && (
+            <div className="ai-status" role="status" aria-live="polite">
+              <span className="drawer-spinner small" aria-hidden="true" />
+              <span>
+                <strong>Analyzing transfer…</strong>
+                <span className="ai-status-detail">
+                  Reviewing transfer facts and firm procedures
+                </span>
+              </span>
+            </div>
+          )}
+
+          {analysisStatus === "error" && (
+            <div className="ai-error" role="alert">
+              <strong>Analysis couldn't be completed.</strong> {analysisError}
+            </div>
+          )}
+
+          {analysisStatus === "success" ? (
+            <button
+              type="button"
+              className="drawer-complete-button"
+              onClick={scrollToAnalysis}
+              aria-label="Analysis complete. Jump to AI analysis"
+            >
+              <span aria-hidden="true">✓</span> Analysis complete · View
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="drawer-primary-button"
+              onClick={runAnalysis}
+              disabled={!detail || loading || analysisStatus === "loading"}
+              aria-busy={analysisStatus === "loading"}
+              aria-label={
+                analysisStatus === "loading"
+                  ? "Analyzing transfer"
+                  : analysisStatus === "error"
+                    ? "Retry AI analysis"
+                    : "Analyze this transfer with AI"
+              }
+            >
+              {analysisStatus === "loading"
+                ? "Analyzing transfer…"
+                : analysisStatus === "error"
+                  ? "Retry analysis"
+                  : "✦ Analyze with AI"}
+            </button>
+          )}
         </footer>
       </aside>
     </div>
@@ -979,6 +1222,7 @@ export default function App() {
 
       {selectedTransfer && (
         <TransferDrawer
+          key={selectedTransfer.transferId}
           clientName={selectedTransfer.clientName}
           detail={detail}
           loading={detailLoading}
