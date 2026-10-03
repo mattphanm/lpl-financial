@@ -3,6 +3,14 @@ import "./index.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
+const CURRENT_ADVISOR = {
+  name: "Alex Rivera",
+  firstName: "Alex",
+  role: "Financial Advisor",
+};
+
+const ADVISOR_NAME_PLACEHOLDER = "[Advisor name]";
+
 type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
 
 type Transfer = {
@@ -97,6 +105,16 @@ type Analysis = {
 };
 
 type AnalysisStatus = "idle" | "loading" | "success" | "error";
+
+type FollowUpDraft = {
+  subject: string;
+  body: string;
+  channel: string;
+};
+
+type FollowUpStatus = "idle" | "loading" | "success" | "error";
+
+type CopyStatus = "idle" | "copied" | "error";
 
 type RequirementState = "done" | "missing" | "pending";
 
@@ -204,6 +222,119 @@ async function readErrorMessage(response: Response) {
   return `The analysis service responded with status ${response.status}.`;
 }
 
+async function copyText(text: string) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Copy command was rejected.");
+    }
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+const BOLD_PATTERN = /\*\*(.+?)\*\*/g;
+
+// Builds editor DOM from a plain-text draft, turning only **bold** spans into
+// <strong>. Text is assigned via textContent so model output is never parsed
+// as HTML.
+function renderDraftBody(container: HTMLElement, body: string) {
+  container.replaceChildren();
+
+  body
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .forEach((line) => {
+      const lineElement = document.createElement("div");
+      const segments = line.split(BOLD_PATTERN);
+
+      segments.forEach((segment, index) => {
+        if (!segment) {
+          return;
+        }
+
+        if (index % 2 === 1) {
+          const strong = document.createElement("strong");
+          strong.textContent = segment;
+          lineElement.appendChild(strong);
+        } else {
+          lineElement.appendChild(
+            document.createTextNode(segment.replace(/\*\*/g, "")),
+          );
+        }
+      });
+
+      if (!lineElement.hasChildNodes()) {
+        lineElement.appendChild(document.createElement("br"));
+      }
+
+      container.appendChild(lineElement);
+    });
+}
+
+const BLOCK_TAGS = new Set(["DIV", "P", "LI"]);
+
+// Serializes the editor back to plain text: one line per block element or
+// <br>, with all formatting dropped.
+function readDraftBody(container: HTMLElement) {
+  let text = "";
+
+  const walk = (node: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        text += child.textContent ?? "";
+        return;
+      }
+
+      if (!(child instanceof HTMLElement)) {
+        return;
+      }
+
+      if (child.tagName === "BR") {
+        text += "\n";
+        return;
+      }
+
+      const isBlock = BLOCK_TAGS.has(child.tagName);
+
+      if (isBlock && text && !text.endsWith("\n")) {
+        text += "\n";
+      }
+
+      walk(child);
+
+      if (isBlock && !text.endsWith("\n")) {
+        text += "\n";
+      }
+    });
+  };
+
+  walk(container);
+
+  return text
+    .replace(/\u00a0/g, " ")
+    .replace(/\*\*/g, "")
+    .replace(/\s+$/, "");
+}
+
+// Fills in the signature placeholder the model leaves in generated drafts.
+// Only the exact placeholder is replaced; the rest of the text is untouched.
+function fillAdvisorPlaceholder(text: string) {
+  return text.split(ADVISOR_NAME_PLACEHOLDER).join(CURRENT_ADVISOR.name);
+}
+
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -235,12 +366,44 @@ function TransferDrawer({
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [analysisError, setAnalysisError] = useState("");
+  const followUpHeadingRef = useRef<HTMLHeadingElement>(null);
+  const followUpControllerRef = useRef<AbortController | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+  const [followUp, setFollowUp] = useState<FollowUpDraft | null>(null);
+  const [followUpStatus, setFollowUpStatus] = useState<FollowUpStatus>("idle");
+  const [followUpError, setFollowUpError] = useState("");
+  const [draftSubject, setDraftSubject] = useState("");
+  const draftEditorRef = useRef<HTMLDivElement>(null);
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
 
   useEffect(() => {
     closeButtonRef.current?.focus();
 
-    return () => analysisControllerRef.current?.abort();
+    return () => {
+      analysisControllerRef.current?.abort();
+      followUpControllerRef.current?.abort();
+
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (followUp && draftEditorRef.current) {
+      renderDraftBody(draftEditorRef.current, followUp.body);
+    }
+  }, [followUp]);
+
+  useEffect(() => {
+    if (followUpStatus === "success") {
+      followUpHeadingRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      followUpHeadingRef.current?.focus({ preventScroll: true });
+    }
+  }, [followUpStatus]);
 
   useEffect(() => {
     if (analysisStatus === "success") {
@@ -302,6 +465,81 @@ function TransferDrawer({
       block: "start",
     });
     analysisHeadingRef.current?.focus({ preventScroll: true });
+  };
+
+  const generateFollowUp = () => {
+    if (!detail || followUpControllerRef.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+    followUpControllerRef.current = controller;
+    setFollowUpStatus("loading");
+    setFollowUpError("");
+
+    fetch(
+      `${API_BASE}/api/transfers/${encodeURIComponent(detail.transfer.transferId)}/follow-up`,
+      { method: "POST", signal: controller.signal },
+    )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response));
+        }
+
+        return response.json() as Promise<FollowUpDraft>;
+      })
+      .then((data) => {
+        setFollowUp({ ...data, body: fillAdvisorPlaceholder(data.body) });
+        setDraftSubject(data.subject);
+        setCopyStatus("idle");
+        setFollowUpStatus("success");
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setFollowUpError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Please check your connection and try again.",
+        );
+        setFollowUpStatus("error");
+      })
+      .finally(() => {
+        if (followUpControllerRef.current === controller) {
+          followUpControllerRef.current = null;
+        }
+      });
+  };
+
+  const scrollToFollowUp = () => {
+    followUpHeadingRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    followUpHeadingRef.current?.focus({ preventScroll: true });
+  };
+
+  const copyDraft = () => {
+    const body = draftEditorRef.current
+      ? readDraftBody(draftEditorRef.current)
+      : "";
+    const email = `Subject: ${draftSubject}\n\n${body}`;
+
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+
+    copyText(email)
+      .then(() => setCopyStatus("copied"))
+      .catch(() => setCopyStatus("error"))
+      .finally(() => {
+        copyTimerRef.current = window.setTimeout(() => {
+          setCopyStatus("idle");
+          copyTimerRef.current = null;
+        }, 2200);
+      });
   };
 
   const blockers = useMemo(
@@ -582,6 +820,123 @@ function TransferDrawer({
                 </section>
               )}
 
+              {followUp && followUpStatus === "success" && (
+                <section
+                  className="followup-panel"
+                  aria-labelledby="followup-title"
+                >
+                  <header className="followup-header">
+                    <div>
+                      <h3
+                        id="followup-title"
+                        ref={followUpHeadingRef}
+                        tabIndex={-1}
+                      >
+                        Follow-Up Draft
+                      </h3>
+                      <p className="followup-subtitle">
+                        Not sent · Review and edit before using
+                      </p>
+                    </div>
+
+                    <div className="followup-tags">
+                      <span className="followup-draft-tag">Draft</span>
+                      <span className="ai-tag">AI-assisted</span>
+                    </div>
+                  </header>
+
+                  <p className="followup-disclaimer">
+                    Draft for advisor review only. TransferReady does not send
+                    client communications or provide investment advice.
+                  </p>
+
+                  <dl className="followup-meta">
+                    <div>
+                      <dt>Channel</dt>
+                      <dd>{formatStatus(followUp.channel || "email")}</dd>
+                    </div>
+                    <div>
+                      <dt>Recipient</dt>
+                      <dd>
+                        {detail.client.name}
+                        {detail.client.email && (
+                          <span className="followup-email">
+                            {" "}
+                            &lt;{detail.client.email}&gt;
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="followup-field">
+                    <label htmlFor="followup-subject">Subject</label>
+                    <input
+                      id="followup-subject"
+                      type="text"
+                      value={draftSubject}
+                      onChange={(event) => setDraftSubject(event.target.value)}
+                    />
+                  </div>
+
+                  <div className="followup-field">
+                    <label
+                      id="followup-body-label"
+                      onClick={() => draftEditorRef.current?.focus()}
+                    >
+                      Message
+                    </label>
+                    <div
+                      id="followup-body"
+                      ref={draftEditorRef}
+                      className="followup-editor"
+                      contentEditable
+                      role="textbox"
+                      aria-multiline="true"
+                      aria-labelledby="followup-body-label"
+                      spellCheck
+                      suppressContentEditableWarning
+                      onPaste={(event) => {
+                        event.preventDefault();
+                        document.execCommand(
+                          "insertText",
+                          false,
+                          event.clipboardData.getData("text/plain"),
+                        );
+                      }}
+                    />
+                  </div>
+
+                  <div className="followup-actions">
+                    <span
+                      className={`followup-copy-status ${copyStatus}`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {copyStatus === "copied" &&
+                        "Copied to clipboard. Nothing has been sent."}
+                      {copyStatus === "error" &&
+                        "Couldn't access the clipboard. Select the text and copy it manually."}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="followup-copy-button"
+                      onClick={copyDraft}
+                      aria-label="Copy email subject and message to clipboard"
+                    >
+                      {copyStatus === "copied" ? (
+                        <>
+                          <span aria-hidden="true">✓</span> Copied
+                        </>
+                      ) : (
+                        "Copy Email"
+                      )}
+                    </button>
+                  </div>
+                </section>
+              )}
+
               {detail.risk.reasons.length > 0 && (
                 <section className="drawer-section">
                   <h3>Risk reasons</h3>
@@ -782,14 +1137,74 @@ function TransferDrawer({
           )}
 
           {analysisStatus === "success" ? (
-            <button
-              type="button"
-              className="drawer-complete-button"
-              onClick={scrollToAnalysis}
-              aria-label="Analysis complete. Jump to AI analysis"
-            >
-              <span aria-hidden="true">✓</span> Analysis complete · View
-            </button>
+            <>
+              <div className="footer-progress">
+                <button
+                  type="button"
+                  className="footer-link"
+                  onClick={scrollToAnalysis}
+                  aria-label="Analysis complete. Jump to AI analysis"
+                >
+                  <span aria-hidden="true">✓</span> Analysis complete
+                </button>
+                {followUpStatus === "success" && (
+                  <span className="footer-link-static">
+                    <span aria-hidden="true">✓</span> Draft ready
+                  </span>
+                )}
+              </div>
+
+              {followUpStatus === "loading" && (
+                <div className="ai-status" role="status" aria-live="polite">
+                  <span className="drawer-spinner small" aria-hidden="true" />
+                  <span>
+                    <strong>Creating advisor-reviewed draft…</strong>
+                    <span className="ai-status-detail">
+                      Using transfer context and firm procedures
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              {followUpStatus === "error" && (
+                <div className="ai-error" role="alert">
+                  <strong>The follow-up draft couldn't be created.</strong>{" "}
+                  {followUpError}
+                </div>
+              )}
+
+              {followUpStatus === "success" ? (
+                <button
+                  type="button"
+                  className="drawer-complete-button"
+                  onClick={scrollToFollowUp}
+                  aria-label="Follow-up draft ready. Jump to draft for review"
+                >
+                  Review follow-up draft
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="drawer-primary-button"
+                  onClick={generateFollowUp}
+                  disabled={followUpStatus === "loading"}
+                  aria-busy={followUpStatus === "loading"}
+                  aria-label={
+                    followUpStatus === "loading"
+                      ? "Creating advisor-reviewed draft"
+                      : followUpStatus === "error"
+                        ? "Retry generating follow-up draft"
+                        : "Generate follow-up draft for advisor review"
+                  }
+                >
+                  {followUpStatus === "loading"
+                    ? "Creating advisor-reviewed draft…"
+                    : followUpStatus === "error"
+                      ? "Retry follow-up"
+                      : "Generate Follow-Up"}
+                </button>
+              )}
+            </>
           ) : (
             <button
               type="button"
@@ -1010,11 +1425,13 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer">
-          <div className="advisor-avatar">AR</div>
+          <div className="advisor-avatar">
+            {getInitials(CURRENT_ADVISOR.name)}
+          </div>
 
           <div>
-            <div className="advisor-name">Alex Rivera</div>
-            <div className="advisor-role">Financial Advisor</div>
+            <div className="advisor-name">{CURRENT_ADVISOR.name}</div>
+            <div className="advisor-role">{CURRENT_ADVISOR.role}</div>
           </div>
         </div>
       </aside>
@@ -1023,7 +1440,7 @@ export default function App() {
         <header className="page-header">
           <div>
             <p className="eyebrow">TRANSFER OPERATIONS</p>
-            <h1>Good evening, Alex.</h1>
+            <h1>Good evening, {CURRENT_ADVISOR.firstName}.</h1>
             <p className="header-copy">
               Here's where your client transfers need attention today.
             </p>
