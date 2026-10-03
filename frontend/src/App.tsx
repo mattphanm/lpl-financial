@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import "./index.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -186,26 +187,6 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
 function formatDate(value: string | null) {
   if (!value) {
     return "—";
@@ -227,7 +208,12 @@ function formatDate(value: string | null) {
 function getRequirementState(status: string): RequirementState {
   const normalized = status.toUpperCase();
 
-  if (normalized === "COMPLETE" || normalized === "VERIFIED") {
+  // RECEIVED counts as done for the advisor: the client has delivered it.
+  if (
+    normalized === "COMPLETE" ||
+    normalized === "VERIFIED" ||
+    normalized === "RECEIVED"
+  ) {
     return "done";
   }
 
@@ -421,6 +407,7 @@ function TransferDrawer({
   const [draftSubject, setDraftSubject] = useState("");
   const draftEditorRef = useRef<HTMLDivElement>(null);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
+  const [showAllInteractions, setShowAllInteractions] = useState(false);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
@@ -612,12 +599,114 @@ function TransferDrawer({
   );
 
   const displayName = detail?.client.name ?? clientName;
-  const needsAttention =
-    !!detail &&
-    (blockers.length > 0 ||
-      detail.transfer.hasUnresolvedClientQuestion ||
-      detail.risk.level === "HIGH");
-  const completion = detail ? clampPercent(detail.transfer.completionPercent) : 0;
+
+  // Requirements that actually apply to this transfer, outstanding ones first.
+  const trackedRequirements = useMemo(
+    () =>
+      detail
+        ? detail.requirements
+            .filter((r) => r.status.toUpperCase() !== "NOT_REQUIRED")
+            .sort(
+              (a, b) =>
+                Number(getRequirementState(a.status) === "done") -
+                Number(getRequirementState(b.status) === "done"),
+            )
+        : [],
+    [detail],
+  );
+  const receivedCount = trackedRequirements.filter(
+    (r) => getRequirementState(r.status) === "done",
+  ).length;
+  const completion = trackedRequirements.length
+    ? clampPercent(Math.round((receivedCount / trackedRequirements.length) * 100))
+    : 0;
+
+  const daysSinceActivity = detail
+    ? Math.max(
+        0,
+        Math.floor(
+          (Date.now() - new Date(detail.transfer.lastActivityAt).getTime()) /
+            (1000 * 60 * 60 * 24),
+        ),
+      )
+    : 0;
+
+  // Outbound touches since the client last replied, e.g. unanswered reminders.
+  const unansweredFollowUps = (() => {
+    let count = 0;
+    for (const interaction of sortedInteractions) {
+      if (interaction.direction.toUpperCase() === "INBOUND") break;
+      count += 1;
+    }
+    return count;
+  })();
+
+  // One deduplicated list replacing the old callout + "Risk reasons" chips.
+  const attentionItems: { key: string; content: ReactNode }[] = [];
+  if (detail) {
+    for (const blocker of blockers) {
+      attentionItems.push({
+        key: `block-${blocker.requirementId}`,
+        content: (
+          <>
+            <strong>{blocker.displayName}</strong>{" "}
+            {formatStatus(blocker.status).toLowerCase()} — blocks next stage
+          </>
+        ),
+      });
+    }
+    for (const r of trackedRequirements) {
+      if (
+        r.required &&
+        !r.blocksNextStage &&
+        getRequirementState(r.status) === "missing"
+      ) {
+        attentionItems.push({
+          key: `missing-${r.requirementId}`,
+          content: (
+            <>
+              <strong>{r.displayName}</strong> missing
+            </>
+          ),
+        });
+      }
+    }
+    if (detail.transfer.status !== "COMPLETE" && daysSinceActivity >= 5) {
+      attentionItems.push({
+        key: "idle",
+        content: (
+          <>
+            No activity in {daysSinceActivity} days
+            {unansweredFollowUps > 0 &&
+              ` (${unansweredFollowUps} ${
+                unansweredFollowUps === 1 ? "follow-up" : "follow-ups"
+              } sent, no reply)`}
+          </>
+        ),
+      });
+    }
+    if (detail.transfer.hasUnresolvedClientQuestion) {
+      attentionItems.push({
+        key: "question",
+        content: (
+          <>
+            <strong>Unresolved client question</strong> — client is waiting on
+            a response
+          </>
+        ),
+      });
+    }
+    if (attentionItems.length === 0 && detail.risk.level === "HIGH") {
+      attentionItems.push({
+        key: "high",
+        content: (
+          <>
+            Flagged as <strong>high risk</strong>
+          </>
+        ),
+      });
+    }
+  }
 
   return (
     <div className="drawer-layer">
@@ -684,61 +773,62 @@ function TransferDrawer({
           {!loading && !error && detail && (
             <>
               <section className="drawer-summary" aria-label="Transfer summary">
-                <div className="drawer-summary-row">
-                  <div>
-                    <div className="drawer-label">Status</div>
-                    <span className="status-badge drawer-status">
-                      {formatStatus(detail.transfer.status)}
-                    </span>
-                  </div>
+                <div className="drawer-summary-pills">
+                  <span className="status-badge drawer-status">
+                    {formatStatus(detail.transfer.status)}
+                  </span>
+                  <span className="drawer-stage-pill">
+                    {formatStatus(detail.transfer.stage)}
+                  </span>
+                  <span
+                    className={`drawer-risk-badge ${detail.risk.level.toLowerCase()}`}
+                  >
+                    <span className="risk-dot" aria-hidden="true" />
+                    {RISK_LABELS[detail.risk.level]}
+                  </span>
+                </div>
 
-                  <div>
-                    <div className="drawer-label">Stage</div>
-                    <div className="drawer-value">
-                      {formatStatus(detail.transfer.stage)}
+                <div className="drawer-meta">
+                  Last activity{" "}
+                  <strong
+                    className={daysSinceActivity >= 5 ? "drawer-meta-alert" : ""}
+                  >
+                    {daysSinceActivity === 0
+                      ? "today"
+                      : `${daysSinceActivity} ${
+                          daysSinceActivity === 1 ? "day" : "days"
+                        } ago`}
+                  </strong>{" "}
+                  · Started {formatDate(detail.transfer.startedAt)}
+                </div>
+
+                {trackedRequirements.length > 0 && (
+                  <div className="drawer-progress">
+                    <div className="drawer-progress-label">
+                      <span>Requirements received</span>
+                      <strong>
+                        {receivedCount} of {trackedRequirements.length}
+                      </strong>
+                    </div>
+                    <div
+                      className="drawer-progress-track"
+                      role="progressbar"
+                      aria-label="Requirements received"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={completion}
+                      aria-valuetext={`${receivedCount} of ${trackedRequirements.length} requirements received`}
+                    >
+                      <div
+                        className="drawer-progress-fill"
+                        style={{ width: `${completion}%` }}
+                      />
                     </div>
                   </div>
-
-                  <div>
-                    <div className="drawer-label">Risk</div>
-                    <span
-                      className={`drawer-risk-badge ${detail.risk.level.toLowerCase()}`}
-                    >
-                      <span className="risk-dot" aria-hidden="true" />
-                      {RISK_LABELS[detail.risk.level]}
-                      <span className="drawer-risk-score">
-                        Score {detail.risk.score}
-                      </span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="drawer-progress">
-                  <div className="drawer-progress-label">
-                    <span>Transfer completion</span>
-                    <strong>{completion}%</strong>
-                  </div>
-                  <div
-                    className="drawer-progress-track"
-                    role="progressbar"
-                    aria-label="Transfer completion"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={completion}
-                  >
-                    <div
-                      className="drawer-progress-fill"
-                      style={{ width: `${completion}%` }}
-                    />
-                  </div>
-                  <div className="drawer-meta">
-                    Started {formatDate(detail.transfer.startedAt)} · Last
-                    activity {formatDateTime(detail.transfer.lastActivityAt)}
-                  </div>
-                </div>
+                )}
               </section>
 
-              {needsAttention && (
+              {attentionItems.length > 0 && (
                 <section
                   className="drawer-attention"
                   aria-labelledby="attention-title"
@@ -748,28 +838,9 @@ function TransferDrawer({
                   </h3>
 
                   <ul>
-                    {blockers.map((blocker) => (
-                      <li key={blocker.requirementId}>
-                        <strong>{blocker.displayName}</strong> is{" "}
-                        {formatStatus(blocker.status).toLowerCase()} and blocks
-                        the next stage.
-                      </li>
+                    {attentionItems.map((item) => (
+                      <li key={item.key}>{item.content}</li>
                     ))}
-
-                    {detail.transfer.hasUnresolvedClientQuestion && (
-                      <li>
-                        <strong>Unresolved client question</strong> — the
-                        client is waiting on a response.
-                      </li>
-                    )}
-
-                    {blockers.length === 0 &&
-                      !detail.transfer.hasUnresolvedClientQuestion && (
-                        <li>
-                          This transfer is flagged as{" "}
-                          <strong>high risk</strong>. Review the reasons below.
-                        </li>
-                      )}
                   </ul>
                 </section>
               )}
@@ -983,45 +1054,29 @@ function TransferDrawer({
                 </section>
               )}
 
-              {detail.risk.reasons.length > 0 && (
-                <section className="drawer-section">
-                  <h3>Risk reasons</h3>
-                  <ul className="drawer-chips">
-                    {detail.risk.reasons.map((reason) => (
-                      <li key={reason} className="drawer-chip">
-                        {reason}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
               <section className="drawer-section">
                 <h3>
                   Requirements
                   <span className="drawer-count">
-                    {
-                      detail.requirements.filter(
-                        (requirement) =>
-                          getRequirementState(requirement.status) === "done",
-                      ).length
-                    }
-                    /{detail.requirements.length} complete
+                    {receivedCount} of {trackedRequirements.length} received
                   </span>
                 </h3>
 
-                {detail.requirements.length === 0 ? (
+                {trackedRequirements.length === 0 ? (
                   <p className="drawer-empty">No requirements on file.</p>
                 ) : (
                   <ul className="requirement-list">
-                    {detail.requirements.map((requirement) => {
+                    {trackedRequirements.map((requirement) => {
                       const state = getRequirementState(requirement.status);
+                      const isDone = state === "done";
 
                       return (
                         <li
                           key={requirement.requirementId}
                           className={`requirement-item ${state} ${
-                            requirement.blocksNextStage && state !== "done"
+                            isDone ? "compact" : ""
+                          } ${
+                            requirement.blocksNextStage && !isDone
                               ? "blocking"
                               : ""
                           }`}
@@ -1030,11 +1085,7 @@ function TransferDrawer({
                             className="requirement-icon"
                             aria-hidden="true"
                           >
-                            {state === "done"
-                              ? "✓"
-                              : state === "missing"
-                                ? "✕"
-                                : "…"}
+                            {isDone ? "✓" : state === "missing" ? "✕" : "…"}
                           </span>
 
                           <div className="requirement-main">
@@ -1046,22 +1097,17 @@ function TransferDrawer({
                                 </span>
                               )}
                             </div>
-                            <div className="requirement-meta">
-                              {requirement.completedAt
-                                ? `Completed ${formatDate(requirement.completedAt)}`
-                                : `Requested ${formatDate(requirement.requestedAt)}`}
-                            </div>
+                            {!isDone && (
+                              <div className="requirement-meta">
+                                Requested {formatDate(requirement.requestedAt)}
+                              </div>
+                            )}
                           </div>
 
                           <div className="requirement-tags">
                             <span className={`requirement-status ${state}`}>
                               {formatStatus(requirement.status)}
                             </span>
-                            {requirement.blocksNextStage && (
-                              <span className="requirement-blocker">
-                                Blocks next stage
-                              </span>
-                            )}
                           </div>
                         </li>
                       );
@@ -1071,93 +1117,93 @@ function TransferDrawer({
               </section>
 
               <section className="drawer-section">
-                <h3>Recent interactions</h3>
+                <h3>Last interaction</h3>
 
                 {sortedInteractions.length === 0 ? (
                   <p className="drawer-empty">No interactions recorded yet.</p>
                 ) : (
-                  <ol className="interaction-list">
-                    {sortedInteractions.map((interaction) => (
-                      <li
-                        key={interaction.interactionId}
-                        className="interaction-item"
+                  <>
+                    <ol className="interaction-list" id="interaction-list">
+                      {(showAllInteractions
+                        ? sortedInteractions
+                        : sortedInteractions.slice(0, 1)
+                      ).map((interaction) => (
+                        <li
+                          key={interaction.interactionId}
+                          className="interaction-item"
+                        >
+                          <div className="interaction-meta">
+                            <time dateTime={interaction.timestamp}>
+                              {formatDate(interaction.timestamp)}
+                            </time>
+                            <span>·</span>
+                            <span className="interaction-type">
+                              {formatStatus(interaction.type)}
+                            </span>
+                          </div>
+                          <p className="interaction-summary">
+                            {interaction.summary}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                    {sortedInteractions.length > 1 && (
+                      <button
+                        type="button"
+                        className="drawer-link-button"
+                        aria-expanded={showAllInteractions}
+                        aria-controls="interaction-list"
+                        onClick={() => setShowAllInteractions((v) => !v)}
                       >
-                        <div className="interaction-meta">
-                          <span className="interaction-type">
-                            {formatStatus(interaction.type)}
-                          </span>
-                          <span>{formatStatus(interaction.direction)}</span>
-                          <span>·</span>
-                          <time dateTime={interaction.timestamp}>
-                            {formatDateTime(interaction.timestamp)}
-                          </time>
-                        </div>
-                        <p className="interaction-summary">
-                          {interaction.summary}
-                        </p>
-                        <div className="interaction-author">
-                          Logged by {interaction.createdBy}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
+                        {showAllInteractions
+                          ? "Show less"
+                          : `Show all (${sortedInteractions.length})`}
+                      </button>
+                    )}
+                  </>
                 )}
               </section>
 
               <section className="drawer-section">
-                <h3>Client contact &amp; preferences</h3>
+                <h3>Contact</h3>
 
-                {detail.transfer.hasUnresolvedClientQuestion && (
-                  <div className="drawer-question-flag">
-                    <span aria-hidden="true">?</span>
-                    Client has an unresolved question
-                  </div>
-                )}
+                <div className="contact-compact">
+                  {(() => {
+                    const prefersPhone =
+                      detail.client.preferredContactMethod?.toUpperCase() ===
+                      "PHONE";
+                    const value = prefersPhone
+                      ? detail.client.phone
+                      : detail.client.email;
+                    const href = prefersPhone
+                      ? `tel:${detail.client.phone}`
+                      : `mailto:${detail.client.email}`;
+                    return (
+                      <p>
+                        Prefers{" "}
+                        <strong>{prefersPhone ? "phone" : "email"}</strong>
+                        {value && (
+                          <>
+                            {" · "}
+                            <a href={href}>{value}</a>
+                          </>
+                        )}
+                      </p>
+                    );
+                  })()}
 
-                <dl className="contact-grid">
-                  <div>
-                    <dt>Email</dt>
-                    <dd>
-                      {detail.client.email ? (
-                        <a href={`mailto:${detail.client.email}`}>
-                          {detail.client.email}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Phone</dt>
-                    <dd>
-                      {detail.client.phone ? (
-                        <a href={`tel:${detail.client.phone}`}>
-                          {detail.client.phone}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Preferred contact</dt>
-                    <dd>
-                      {detail.client.preferredContactMethod
-                        ? formatStatus(detail.client.preferredContactMethod)
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Communication preference</dt>
-                    <dd>{detail.client.communicationPreference || "—"}</dd>
-                  </div>
-                </dl>
+                  {detail.client.communicationPreference && (
+                    <p className="contact-preference">
+                      “{detail.client.communicationPreference}”
+                    </p>
+                  )}
 
-                {detail.client.relationshipNotes && (
-                  <p className="relationship-notes">
-                    {detail.client.relationshipNotes}
-                  </p>
-                )}
+                  {detail.client.relationshipNotes && (
+                    <p className="contact-note">
+                      Note: {detail.client.relationshipNotes}
+                    </p>
+                  )}
+                </div>
               </section>
             </>
           )}

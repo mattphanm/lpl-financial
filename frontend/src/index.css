@@ -730,11 +730,77 @@ tbody tr:hover {
   border-radius: 12px;
 }
 
-.drawer-summary-row {
+.drawer-summary-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.drawer-stage-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef1ec;
+  color: #4a5a52;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.drawer-meta-alert {
+  color: #a64f47;
+}
+
+.requirement-item.compact {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  opacity: 0.8;
+}
+
+.drawer-link-button {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1f4a35;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.drawer-link-button:hover {
+  text-decoration: underline;
+}
+
+.drawer-link-button:focus-visible {
+  outline: 3px solid #8fb7a0;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.contact-compact {
   display: grid;
-  grid-template-columns: auto auto 1fr;
-  gap: 22px;
-  align-items: start;
+  gap: 6px;
+  font-size: 14px;
+  color: #24362c;
+}
+
+.contact-compact p {
+  margin: 0;
+}
+
+.contact-compact a {
+  color: inherit;
+}
+
+.contact-preference {
+  color: #5e6c64;
+  font-style: italic;
+}
+
+.contact-note {
+  color: #7d8a83;
+  font-size: 13px;
 }
 
 .drawer-label {
