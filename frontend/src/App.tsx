@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { HeaderStripe, HeroChevrons, Icon, IconSprite, LplMark } from "./Icons";
 import "./index.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -719,11 +720,8 @@ function TransferDrawer({
         aria-labelledby="drawer-title"
       >
         <header className="drawer-header">
+          <HeaderStripe />
           <div className="drawer-identity">
-            <div className="drawer-avatar" aria-hidden="true">
-              {getInitials(displayName)}
-            </div>
-
             <div>
               <p className="drawer-eyebrow">Transfer detail</p>
               <h2 id="drawer-title">{displayName}</h2>
@@ -834,7 +832,7 @@ function TransferDrawer({
                   aria-labelledby="attention-title"
                 >
                   <h3 id="attention-title">
-                    <span aria-hidden="true">!</span> Needs attention
+                    <Icon name="alert" /> Needs attention
                   </h3>
 
                   <ul>
@@ -1085,7 +1083,7 @@ function TransferDrawer({
                             className="requirement-icon"
                             aria-hidden="true"
                           >
-                            {isDone ? "✓" : state === "missing" ? "✕" : "…"}
+                            <Icon name={isDone ? "doc-ok" : "doc"} size="lg" />
                           </span>
 
                           <div className="requirement-main">
@@ -1132,6 +1130,19 @@ function TransferDrawer({
                           key={interaction.interactionId}
                           className="interaction-item"
                         >
+                          <Icon
+                            size="lg"
+                            name={
+                              interaction.type === "PHONE_CALL"
+                                ? "phone"
+                                : interaction.type.startsWith("DOCUMENT")
+                                  ? "doc"
+                                  : interaction.type === "INTERNAL_NOTE"
+                                    ? "talk"
+                                    : "envelope"
+                            }
+                          />
+                          <div>
                           <div className="interaction-meta">
                             <time dateTime={interaction.timestamp}>
                               {formatDate(interaction.timestamp)}
@@ -1144,6 +1155,7 @@ function TransferDrawer({
                           <p className="interaction-summary">
                             {interaction.summary}
                           </p>
+                          </div>
                         </li>
                       ))}
                     </ol>
@@ -1179,15 +1191,18 @@ function TransferDrawer({
                       ? `tel:${detail.client.phone}`
                       : `mailto:${detail.client.email}`;
                     return (
-                      <p>
-                        Prefers{" "}
-                        <strong>{prefersPhone ? "phone" : "email"}</strong>
-                        {value && (
-                          <>
-                            {" · "}
-                            <a href={href}>{value}</a>
-                          </>
-                        )}
+                      <p className="contact-row">
+                        <Icon name={prefersPhone ? "phone" : "envelope"} />
+                        <span>
+                          Prefers{" "}
+                          <strong>{prefersPhone ? "phone" : "email"}</strong>
+                          {value && (
+                            <>
+                              {" · "}
+                              <a href={href}>{value}</a>
+                            </>
+                          )}
+                        </span>
                       </p>
                     );
                   })()}
@@ -1289,11 +1304,15 @@ function TransferDrawer({
                         : "Generate follow-up draft for advisor review"
                   }
                 >
-                  {followUpStatus === "loading"
-                    ? "Creating advisor-reviewed draft…"
-                    : followUpStatus === "error"
-                      ? "Retry follow-up"
-                      : "Generate Follow-Up"}
+                  {followUpStatus === "loading" ? (
+                    "Creating advisor-reviewed draft…"
+                  ) : followUpStatus === "error" ? (
+                    "Retry follow-up"
+                  ) : (
+                    <>
+                      <Icon name="talk" onDark /> Generate Follow-Up
+                    </>
+                  )}
                 </button>
               )}
             </>
@@ -1312,11 +1331,15 @@ function TransferDrawer({
                     : "Analyze this transfer with AI"
               }
             >
-              {analysisStatus === "loading"
-                ? "Analyzing transfer…"
-                : analysisStatus === "error"
-                  ? "Retry analysis"
-                  : "✦ Analyze with AI"}
+              {analysisStatus === "loading" ? (
+                "Analyzing transfer…"
+              ) : analysisStatus === "error" ? (
+                "Retry analysis"
+              ) : (
+                <>
+                  <Icon name="idea" onDark /> Analyze with AI
+                </>
+              )}
             </button>
           )}
         </footer>
@@ -1886,23 +1909,24 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <IconSprite />
       <aside className="sidebar">
         <div>
           <div className="brand">
-            <div className="brand-mark">T</div>
-
-            <div>
-              <div className="brand-name">TransferReady</div>
-              <div className="brand-subtitle">Advisor Intelligence</div>
-            </div>
+            <LplMark />
+            <span className="brand-lpl">LPL Financial</span>
+          </div>
+          <div className="product">
+            <div className="brand-name">NorthStar</div>
+            <div className="brand-subtitle">Advisor Intelligence</div>
           </div>
 
           <nav className="nav" aria-label="Main">
             {(
               [
-                { id: "dashboard", icon: "⌂", label: "Dashboard" },
-                { id: "transfers", icon: "⇄", label: "Transfers" },
-                { id: "reports", icon: "◫", label: "Reports" },
+                { id: "dashboard", icon: "pie", label: "Dashboard" },
+                { id: "transfers", icon: "exchange", label: "Transfers" },
+                { id: "reports", icon: "bar", label: "Reports" },
               ] as const
             ).map((item) => (
               <button
@@ -1912,9 +1936,7 @@ export default function App() {
                 aria-current={view === item.id ? "page" : undefined}
                 onClick={() => setView(item.id)}
               >
-                <span className="nav-icon" aria-hidden="true">
-                  {item.icon}
-                </span>
+                <Icon name={item.icon} onDark />
                 {item.label}
               </button>
             ))}
@@ -1922,14 +1944,17 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer">
-          <div className="advisor-avatar">
-            {getInitials(CURRENT_ADVISOR.name)}
-          </div>
+          <div className="sidebar-advisor">
+            <div className="advisor-avatar">
+              {getInitials(CURRENT_ADVISOR.name)}
+            </div>
 
-          <div>
-            <div className="advisor-name">{CURRENT_ADVISOR.name}</div>
-            <div className="advisor-role">{CURRENT_ADVISOR.role}</div>
+            <div>
+              <div className="advisor-name">{CURRENT_ADVISOR.name}</div>
+              <div className="advisor-role">{CURRENT_ADVISOR.role}</div>
+            </div>
           </div>
+          <div className="sidebar-legal">Member FINRA/SIPC</div>
         </div>
       </aside>
 
@@ -1944,12 +1969,21 @@ export default function App() {
           />
         ) : (
           <>
-            <header className="page-header">
-              <div>
+            <header className="page-header hero">
+              <div className="hero-copy">
                 <p className="eyebrow">TRANSFER OPERATIONS</p>
                 <h1>Good evening, {CURRENT_ADVISOR.firstName}.</h1>
                 <p className="header-copy">
                   Here's where your client transfers need attention today.
+                </p>
+                <div className="hero-rule" aria-hidden="true" />
+                <p className="hero-date">
+                  {new Intl.DateTimeFormat("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  }).format(new Date())}
                 </p>
               </div>
 
@@ -1957,17 +1991,25 @@ export default function App() {
                 <span className="status-dot" />
                 Live data
               </div>
+
+              <HeroChevrons />
             </header>
 
             <section className="metrics-grid">
               <article className="metric-card">
-                <div className="metric-label">Total transfers</div>
+                <div className="metric-head">
+                  <div className="metric-label">Total transfers</div>
+                  <Icon name="exchange" size="lg" />
+                </div>
                 <div className="metric-value">{transfers.length}</div>
                 <div className="metric-caption">Active transfer book</div>
               </article>
 
               <article className="metric-card danger-card">
-                <div className="metric-label">High risk</div>
+                <div className="metric-head">
+                  <div className="metric-label">High risk</div>
+                  <Icon name="alert" size="lg" />
+                </div>
                 <div className="metric-value">{metrics.highRisk}</div>
                 <div className="metric-caption danger-text">
                   Immediate attention recommended
@@ -1975,18 +2017,24 @@ export default function App() {
               </article>
 
               <article className="metric-card">
-                <div className="metric-label">Needs attention</div>
+                <div className="metric-head">
+                  <div className="metric-label">Needs attention</div>
+                  <Icon name="time" size="lg" />
+                </div>
                 <div className="metric-value">{metrics.needsAttention}</div>
                 <div className="metric-caption">High + medium risk</div>
               </article>
 
               <article className="metric-card">
-                <div className="metric-label">Transfer assets</div>
+                <div className="metric-head">
+                  <div className="metric-label">Transfer assets</div>
+                  <Icon name="dollar" size="lg" />
+                </div>
                 <div className="metric-value metric-currency">
                   {formatCurrency(metrics.assets)}
                 </div>
                 <div className="metric-caption">
-                  {metrics.complete} transfers complete
+                  {metrics.complete} of {transfers.length} transfers complete
                 </div>
               </article>
             </section>
@@ -2007,9 +2055,12 @@ export default function App() {
 
               <div className="toolbar">
                 <div className="search-wrapper">
-                  <span className="search-icon">⌕</span>
+                  <span className="search-icon">
+                    <Icon name="search" />
+                  </span>
                   <input
                     type="search"
+                    aria-label="Search clients or account types"
                     placeholder="Search clients or account types..."
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
@@ -2020,6 +2071,8 @@ export default function App() {
                   {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((level) => (
                     <button
                       key={level}
+                      type="button"
+                      aria-pressed={riskFilter === level}
                       className={`filter-button ${
                         riskFilter === level ? "selected" : ""
                       }`}
@@ -2092,7 +2145,7 @@ export default function App() {
                                 className={`risk-badge ${transfer.riskLevel.toLowerCase()}`}
                               >
                                 <span className="risk-dot" />
-                                {transfer.riskLevel}
+                                {formatStatus(transfer.riskLevel)}
                               </span>
 
                               {transfer.riskReasons[0] && (
@@ -2126,7 +2179,7 @@ export default function App() {
                                 openTransfer(transfer, event.currentTarget)
                               }
                             >
-                              →
+                              <Icon name="arrow" size="lg" />
                             </button>
                           </td>
                         </tr>
