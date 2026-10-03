@@ -1,4 +1,4 @@
-# Transfer-Ready
+# NorthStar
 
 An AI-assisted account transfer processing platform. This monorepo contains the frontend, backend, AI prompt/schema assets, synthetic data, domain knowledge, and infrastructure needed to run and demo the system.
 
