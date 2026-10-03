@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -14,6 +14,76 @@ type Transfer = {
   riskLevel: RiskLevel;
   riskReasons: string[];
   daysSinceActivity: number;
+};
+
+type ClientDetail = {
+  clientId: string;
+  name: string;
+  email: string;
+  phone: string;
+  preferredContactMethod: string;
+  communicationPreference: string;
+  relationshipNotes: string;
+};
+
+type AccountDetail = {
+  accountId: string;
+  institution: string;
+  accountType: string;
+  estimatedAssets: number;
+};
+
+type TransferRecord = {
+  transferId: string;
+  transferAmount: number;
+  stage: string;
+  status: string;
+  completionPercent: number;
+  lastActivityAt: string;
+  startedAt: string;
+  hasUnresolvedClientQuestion: boolean;
+};
+
+type Requirement = {
+  requirementId: string;
+  displayName: string;
+  required: boolean;
+  status: string;
+  blocksNextStage: boolean;
+  requestedAt: string;
+  completedAt: string | null;
+};
+
+type Interaction = {
+  interactionId: string;
+  summary: string;
+  timestamp: string;
+  direction: string;
+  createdBy: string;
+  type: string;
+};
+
+type RiskAssessment = {
+  level: RiskLevel;
+  score: number;
+  reasons: string[];
+};
+
+type TransferDetail = {
+  client: ClientDetail;
+  account: AccountDetail;
+  transfer: TransferRecord;
+  requirements: Requirement[];
+  interactions: Interaction[];
+  risk: RiskAssessment;
+};
+
+type RequirementState = "done" | "missing" | "pending";
+
+const RISK_LABELS: Record<RiskLevel, string> = {
+  HIGH: "High risk",
+  MEDIUM: "Medium risk",
+  LOW: "Low risk",
 };
 
 function formatCurrency(amount: number) {
@@ -40,12 +110,568 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function getRequirementState(status: string): RequirementState {
+  const normalized = status.toUpperCase();
+
+  if (normalized === "COMPLETE" || normalized === "VERIFIED") {
+    return "done";
+  }
+
+  if (normalized === "MISSING") {
+    return "missing";
+  }
+
+  return "pending";
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+type TransferDrawerProps = {
+  clientName: string;
+  detail: TransferDetail | null;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+  onRetry: () => void;
+};
+
+function TransferDrawer({
+  clientName,
+  detail,
+  loading,
+  error,
+  onClose,
+  onRetry,
+}: TransferDrawerProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  const blockers = useMemo(
+    () =>
+      detail
+        ? detail.requirements.filter(
+            (requirement) =>
+              requirement.blocksNextStage &&
+              getRequirementState(requirement.status) !== "done",
+          )
+        : [],
+    [detail],
+  );
+
+  const sortedInteractions = useMemo(
+    () =>
+      detail
+        ? [...detail.interactions].sort(
+            (a, b) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          )
+        : [],
+    [detail],
+  );
+
+  const displayName = detail?.client.name ?? clientName;
+  const needsAttention =
+    !!detail &&
+    (blockers.length > 0 ||
+      detail.transfer.hasUnresolvedClientQuestion ||
+      detail.risk.level === "HIGH");
+  const completion = detail ? clampPercent(detail.transfer.completionPercent) : 0;
+
+  return (
+    <div className="drawer-layer">
+      <div className="drawer-backdrop" onClick={onClose} aria-hidden="true" />
+
+      <aside
+        className="drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
+      >
+        <header className="drawer-header">
+          <div className="drawer-identity">
+            <div className="drawer-avatar" aria-hidden="true">
+              {getInitials(displayName)}
+            </div>
+
+            <div>
+              <p className="drawer-eyebrow">Transfer detail</p>
+              <h2 id="drawer-title">{displayName}</h2>
+              {detail && (
+                <p className="drawer-subtitle">
+                  {detail.account.accountType} ·{" "}
+                  {formatCurrency(detail.transfer.transferAmount)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="drawer-close"
+            onClick={onClose}
+            aria-label="Close transfer detail"
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="drawer-body">
+          {loading && (
+            <div className="drawer-state" role="status" aria-live="polite">
+              <span className="drawer-spinner" aria-hidden="true" />
+              Loading transfer details…
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="drawer-state drawer-error" role="alert">
+              <strong>We couldn't load this transfer.</strong>
+              <span>{error}</span>
+              <button
+                type="button"
+                className="drawer-secondary-button"
+                onClick={onRetry}
+                aria-label="Retry loading transfer detail"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && detail && (
+            <>
+              <section className="drawer-summary" aria-label="Transfer summary">
+                <div className="drawer-summary-row">
+                  <div>
+                    <div className="drawer-label">Status</div>
+                    <span className="status-badge drawer-status">
+                      {formatStatus(detail.transfer.status)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="drawer-label">Stage</div>
+                    <div className="drawer-value">
+                      {formatStatus(detail.transfer.stage)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="drawer-label">Risk</div>
+                    <span
+                      className={`drawer-risk-badge ${detail.risk.level.toLowerCase()}`}
+                    >
+                      <span className="risk-dot" aria-hidden="true" />
+                      {RISK_LABELS[detail.risk.level]}
+                      <span className="drawer-risk-score">
+                        Score {detail.risk.score}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="drawer-progress">
+                  <div className="drawer-progress-label">
+                    <span>Transfer completion</span>
+                    <strong>{completion}%</strong>
+                  </div>
+                  <div
+                    className="drawer-progress-track"
+                    role="progressbar"
+                    aria-label="Transfer completion"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={completion}
+                  >
+                    <div
+                      className="drawer-progress-fill"
+                      style={{ width: `${completion}%` }}
+                    />
+                  </div>
+                  <div className="drawer-meta">
+                    Started {formatDate(detail.transfer.startedAt)} · Last
+                    activity {formatDateTime(detail.transfer.lastActivityAt)}
+                  </div>
+                </div>
+              </section>
+
+              {needsAttention && (
+                <section
+                  className="drawer-attention"
+                  aria-labelledby="attention-title"
+                >
+                  <h3 id="attention-title">
+                    <span aria-hidden="true">!</span> Needs attention
+                  </h3>
+
+                  <ul>
+                    {blockers.map((blocker) => (
+                      <li key={blocker.requirementId}>
+                        <strong>{blocker.displayName}</strong> is{" "}
+                        {formatStatus(blocker.status).toLowerCase()} and blocks
+                        the next stage.
+                      </li>
+                    ))}
+
+                    {detail.transfer.hasUnresolvedClientQuestion && (
+                      <li>
+                        <strong>Unresolved client question</strong> — the
+                        client is waiting on a response.
+                      </li>
+                    )}
+
+                    {blockers.length === 0 &&
+                      !detail.transfer.hasUnresolvedClientQuestion && (
+                        <li>
+                          This transfer is flagged as{" "}
+                          <strong>high risk</strong>. Review the reasons below.
+                        </li>
+                      )}
+                  </ul>
+                </section>
+              )}
+
+              {detail.risk.reasons.length > 0 && (
+                <section className="drawer-section">
+                  <h3>Risk reasons</h3>
+                  <ul className="drawer-chips">
+                    {detail.risk.reasons.map((reason) => (
+                      <li key={reason} className="drawer-chip">
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              <section className="drawer-section">
+                <h3>
+                  Requirements
+                  <span className="drawer-count">
+                    {
+                      detail.requirements.filter(
+                        (requirement) =>
+                          getRequirementState(requirement.status) === "done",
+                      ).length
+                    }
+                    /{detail.requirements.length} complete
+                  </span>
+                </h3>
+
+                {detail.requirements.length === 0 ? (
+                  <p className="drawer-empty">No requirements on file.</p>
+                ) : (
+                  <ul className="requirement-list">
+                    {detail.requirements.map((requirement) => {
+                      const state = getRequirementState(requirement.status);
+
+                      return (
+                        <li
+                          key={requirement.requirementId}
+                          className={`requirement-item ${state} ${
+                            requirement.blocksNextStage && state !== "done"
+                              ? "blocking"
+                              : ""
+                          }`}
+                        >
+                          <span
+                            className="requirement-icon"
+                            aria-hidden="true"
+                          >
+                            {state === "done"
+                              ? "✓"
+                              : state === "missing"
+                                ? "✕"
+                                : "…"}
+                          </span>
+
+                          <div className="requirement-main">
+                            <div className="requirement-name">
+                              {requirement.displayName}
+                              {!requirement.required && (
+                                <span className="requirement-optional">
+                                  Optional
+                                </span>
+                              )}
+                            </div>
+                            <div className="requirement-meta">
+                              {requirement.completedAt
+                                ? `Completed ${formatDate(requirement.completedAt)}`
+                                : `Requested ${formatDate(requirement.requestedAt)}`}
+                            </div>
+                          </div>
+
+                          <div className="requirement-tags">
+                            <span className={`requirement-status ${state}`}>
+                              {formatStatus(requirement.status)}
+                            </span>
+                            {requirement.blocksNextStage && (
+                              <span className="requirement-blocker">
+                                Blocks next stage
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
+              <section className="drawer-section">
+                <h3>Recent interactions</h3>
+
+                {sortedInteractions.length === 0 ? (
+                  <p className="drawer-empty">No interactions recorded yet.</p>
+                ) : (
+                  <ol className="interaction-list">
+                    {sortedInteractions.map((interaction) => (
+                      <li
+                        key={interaction.interactionId}
+                        className="interaction-item"
+                      >
+                        <div className="interaction-meta">
+                          <span className="interaction-type">
+                            {formatStatus(interaction.type)}
+                          </span>
+                          <span>{formatStatus(interaction.direction)}</span>
+                          <span>·</span>
+                          <time dateTime={interaction.timestamp}>
+                            {formatDateTime(interaction.timestamp)}
+                          </time>
+                        </div>
+                        <p className="interaction-summary">
+                          {interaction.summary}
+                        </p>
+                        <div className="interaction-author">
+                          Logged by {interaction.createdBy}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+
+              <section className="drawer-section">
+                <h3>Client contact &amp; preferences</h3>
+
+                {detail.transfer.hasUnresolvedClientQuestion && (
+                  <div className="drawer-question-flag">
+                    <span aria-hidden="true">?</span>
+                    Client has an unresolved question
+                  </div>
+                )}
+
+                <dl className="contact-grid">
+                  <div>
+                    <dt>Email</dt>
+                    <dd>
+                      {detail.client.email ? (
+                        <a href={`mailto:${detail.client.email}`}>
+                          {detail.client.email}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Phone</dt>
+                    <dd>
+                      {detail.client.phone ? (
+                        <a href={`tel:${detail.client.phone}`}>
+                          {detail.client.phone}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Preferred contact</dt>
+                    <dd>
+                      {detail.client.preferredContactMethod
+                        ? formatStatus(detail.client.preferredContactMethod)
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Communication preference</dt>
+                    <dd>{detail.client.communicationPreference || "—"}</dd>
+                  </div>
+                </dl>
+
+                {detail.client.relationshipNotes && (
+                  <p className="relationship-notes">
+                    {detail.client.relationshipNotes}
+                  </p>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+
+        <footer className="drawer-footer">
+          <button
+            type="button"
+            className="drawer-primary-button"
+            disabled
+            aria-label="Analyze with AI (coming soon)"
+            title="Coming soon"
+          >
+            Analyze with AI
+          </button>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
 export default function App() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState<"ALL" | RiskLevel>("ALL");
+  const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(
+    null,
+  );
+  const [detail, setDetail] = useState<TransferDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [detailRequest, setDetailRequest] = useState(0);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+
+  const openTransfer = (transfer: Transfer, trigger: HTMLElement) => {
+    lastTriggerRef.current = trigger;
+    setDetailLoading(true);
+    setSelectedTransfer(transfer);
+  };
+
+  const closeDrawer = useCallback(() => {
+    setSelectedTransfer(null);
+    setDetail(null);
+    setDetailError("");
+    setDetailLoading(false);
+    lastTriggerRef.current?.focus();
+  }, []);
+
+  const selectedTransferId = selectedTransfer?.transferId ?? null;
+
+  useEffect(() => {
+    if (!selectedTransferId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setDetail(null);
+    setDetailError("");
+    setDetailLoading(true);
+
+    fetch(
+      `${API_BASE}/api/transfers/${encodeURIComponent(selectedTransferId)}`,
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            response.status === 404
+              ? "This transfer could not be found."
+              : `The server responded with status ${response.status}.`,
+          );
+        }
+
+        return response.json() as Promise<TransferDetail>;
+      })
+      .then((data) => {
+        setDetail(data);
+        setDetailLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setDetailError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Please check your connection and try again.",
+        );
+        setDetailLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [selectedTransferId, detailRequest]);
+
+  useEffect(() => {
+    if (!selectedTransferId) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDrawer();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedTransferId, closeDrawer]);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/transfers`)
@@ -326,8 +952,12 @@ export default function App() {
 
                       <td>
                         <button
+                          type="button"
                           className="row-action"
-                          aria-label={`Open ${transfer.clientName}`}
+                          aria-label={`Open transfer details for ${transfer.clientName}`}
+                          onClick={(event) =>
+                            openTransfer(transfer, event.currentTarget)
+                          }
                         >
                           →
                         </button>
@@ -346,6 +976,17 @@ export default function App() {
           )}
         </section>
       </main>
+
+      {selectedTransfer && (
+        <TransferDrawer
+          clientName={selectedTransfer.clientName}
+          detail={detail}
+          loading={detailLoading}
+          error={detailError}
+          onClose={closeDrawer}
+          onRetry={() => setDetailRequest((count) => count + 1)}
+        />
+      )}
     </div>
   );
 }
