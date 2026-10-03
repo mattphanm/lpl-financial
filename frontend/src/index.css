@@ -1698,3 +1698,263 @@ tbody tr:hover {
   outline: 2px solid #3d6b52;
   outline-offset: 2px;
 }
+
+/* Navigation focus */
+
+.nav-item:focus-visible {
+  outline: 2px solid #e2dfda;
+  outline-offset: 2px;
+}
+
+/* Reports */
+
+.reports-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 90px 24px;
+  border: 1px solid #dfe5e1;
+  border-radius: 13px;
+  background: white;
+  color: #6d7e74;
+  font-size: 13px;
+  text-align: center;
+}
+
+.reports-error {
+  color: #8f453e;
+}
+
+.reports-error strong {
+  color: #7a3832;
+  font-size: 14px;
+}
+
+.reports-secondary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 22px;
+  border: 1px solid #e0e6e2;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 1px 2px rgba(24, 45, 34, 0.025);
+}
+
+.reports-secondary-item {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 16px 20px;
+}
+
+.reports-secondary-item + .reports-secondary-item {
+  border-left: 1px solid #edf0ee;
+}
+
+.reports-secondary-label {
+  color: #748179;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.reports-secondary-value {
+  color: #14251c;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.reports-secondary-caption {
+  margin-left: auto;
+  color: #6f7c75;
+  font-size: 11px;
+}
+
+.reports-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.report-card {
+  padding: 22px 24px 24px;
+  border: 1px solid #dfe5e1;
+  border-radius: 13px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(24, 45, 34, 0.03);
+}
+
+.report-card-header {
+  margin-bottom: 22px;
+}
+
+.report-card-header h2 {
+  margin: 0;
+  color: #1a2a21;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.report-card-header p {
+  margin: 5px 0 0;
+  color: #6f7c75;
+  font-size: 11px;
+}
+
+.risk-stack {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  gap: 2px;
+  border-radius: 999px;
+  background: #f0f3f1;
+}
+
+.risk-stack-segment {
+  min-width: 4px;
+  height: 100%;
+}
+
+.risk-stack-segment.high {
+  background: #c9665c;
+}
+
+.risk-stack-segment.medium {
+  background: #c89b4b;
+}
+
+.risk-stack-segment.low {
+  background: #62a179;
+}
+
+.risk-legend {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid #eef1ef;
+}
+
+.risk-legend-row:first-child {
+  border-top: 0;
+}
+
+.risk-legend-row .risk-badge {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.risk-legend-row .risk-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.risk-legend-count {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.risk-legend-count strong {
+  color: #14251c;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.risk-legend-count span {
+  min-width: 36px;
+  color: #6f7c75;
+  font-size: 11px;
+  text-align: right;
+}
+
+.status-bars {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.status-bar-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 14px;
+}
+
+.status-bar-label {
+  color: #44554b;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.status-bar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f0f3f1;
+}
+
+.status-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #3f6a54;
+}
+
+.status-bar-row.complete .status-bar-fill {
+  background: #10271d;
+}
+
+.status-bar-count {
+  color: #14251c;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.client-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #24362c;
+  font-size: 11px;
+  font-weight: 650;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.client-link:hover {
+  color: #10271d;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.client-link:focus-visible {
+  outline: 2px solid #3d6b52;
+  outline-offset: 2px;
+}
+
+.attention-risk {
+  max-width: 320px;
+}
+
+.attention-reason {
+  color: #66736c;
+  font-size: 10px;
+  line-height: 1.4;
+}

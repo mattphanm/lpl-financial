@@ -118,11 +118,49 @@ type CopyStatus = "idle" | "copied" | "error";
 
 type RequirementState = "done" | "missing" | "pending";
 
+type TransferStatus =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "WAITING_ON_CLIENT"
+  | "INTERNAL_REVIEW"
+  | "CUSTODIAN_PROCESSING"
+  | "COMPLETE";
+
+type ReportsData = {
+  totalTransfers: number;
+  byStatus: Record<TransferStatus, number>;
+  byRisk: Record<RiskLevel, number>;
+  blockedCount: number;
+  stalledCount: number;
+  totalTransferAmount: number;
+  atRiskTransferAmount: number;
+  avgDaysSinceActivity: number;
+  /** COMPLETE / total, expressed as 0..1. */
+  completionRate: number;
+  attentionNeeded: Transfer[];
+};
+
+type ReportsStatus = "idle" | "loading" | "success" | "error";
+
+type View = "dashboard" | "transfers" | "reports";
+
 const RISK_LABELS: Record<RiskLevel, string> = {
   HIGH: "High risk",
   MEDIUM: "Medium risk",
   LOW: "Low risk",
 };
+
+const RISK_ORDER: RiskLevel[] = ["HIGH", "MEDIUM", "LOW"];
+
+// Pipeline order, so the status bars read left-to-right as transfer progress.
+const STATUS_ORDER: TransferStatus[] = [
+  "NOT_STARTED",
+  "IN_PROGRESS",
+  "WAITING_ON_CLIENT",
+  "INTERNAL_REVIEW",
+  "CUSTODIAN_PROCESSING",
+  "COMPLETE",
+];
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", {
@@ -341,6 +379,14 @@ function clampPercent(value: number) {
   }
 
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function shareOf(part: number, total: number) {
+  return total > 0 ? (part / total) * 100 : 0;
+}
+
+function formatDays(days: number) {
+  return days === 1 ? "1 day" : `${days} days`;
 }
 
 type TransferDrawerProps = {
@@ -1233,6 +1279,348 @@ function TransferDrawer({
   );
 }
 
+type ReportsViewProps = {
+  reports: ReportsData | null;
+  status: ReportsStatus;
+  error: string;
+  onRetry: () => void;
+  onOpenTransfer: (transfer: Transfer, trigger: HTMLElement) => void;
+};
+
+function ReportsView({
+  reports,
+  status,
+  error,
+  onRetry,
+  onOpenTransfer,
+}: ReportsViewProps) {
+  const riskTotal = reports
+    ? RISK_ORDER.reduce((sum, level) => sum + reports.byRisk[level], 0)
+    : 0;
+  const statusMax = reports
+    ? Math.max(0, ...STATUS_ORDER.map((key) => reports.byStatus[key] ?? 0))
+    : 0;
+  const completionPercent = reports
+    ? clampPercent(reports.completionRate * 100)
+    : 0;
+  const atRiskShare = reports
+    ? Math.round(
+        shareOf(reports.atRiskTransferAmount, reports.totalTransferAmount),
+      )
+    : 0;
+
+  return (
+    <>
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">TRANSFER INTELLIGENCE</p>
+          <h1>Transfer reports</h1>
+          <p className="header-copy">
+            Portfolio-level visibility into transfer risk, delays, and assets
+            requiring attention.
+          </p>
+        </div>
+
+        <div className="system-status">
+          <span className="status-dot" />
+          Live data
+        </div>
+      </header>
+
+      {(status === "idle" || status === "loading") && !reports && (
+        <div className="reports-state" role="status" aria-live="polite">
+          <span className="drawer-spinner" aria-hidden="true" />
+          Loading transfer reports…
+        </div>
+      )}
+
+      {status === "error" && !reports && (
+        <div className="reports-state reports-error" role="alert">
+          <strong>We couldn't load transfer reports.</strong>
+          <span>{error}</span>
+          <button
+            type="button"
+            className="drawer-secondary-button"
+            onClick={onRetry}
+            aria-label="Retry loading transfer reports"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {reports && (
+        <>
+          <section className="metrics-grid" aria-label="Key transfer metrics">
+            <article className="metric-card">
+              <div className="metric-label">Total transfer assets</div>
+              <div className="metric-value metric-currency">
+                {formatCurrency(reports.totalTransferAmount)}
+              </div>
+              <div className="metric-caption">
+                Across {reports.totalTransfers}{" "}
+                {reports.totalTransfers === 1 ? "transfer" : "transfers"}
+              </div>
+            </article>
+
+            <article className="metric-card danger-card">
+              <div className="metric-label">Assets at risk</div>
+              <div className="metric-value metric-currency">
+                {formatCurrency(reports.atRiskTransferAmount)}
+              </div>
+              <div className="metric-caption danger-text">
+                {atRiskShare}% of assets · high-risk transfers
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-label">Blocked transfers</div>
+              <div className="metric-value">{reports.blockedCount}</div>
+              <div className="metric-caption">
+                Missing a required item that blocks the next stage
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-label">Stalled transfers</div>
+              <div className="metric-value">{reports.stalledCount}</div>
+              <div className="metric-caption">
+                Open with no activity in 5+ days
+              </div>
+            </article>
+          </section>
+
+          <section className="reports-secondary" aria-label="Pipeline health">
+            <div className="reports-secondary-item">
+              <span className="reports-secondary-label">
+                Avg. days since activity
+              </span>
+              <strong className="reports-secondary-value">
+                {reports.avgDaysSinceActivity}
+              </strong>
+              <span className="reports-secondary-caption">
+                Across open transfers
+              </span>
+            </div>
+
+            <div className="reports-secondary-item">
+              <span className="reports-secondary-label">Completion rate</span>
+              <strong className="reports-secondary-value">
+                {completionPercent}%
+              </strong>
+              <span className="reports-secondary-caption">
+                {reports.byStatus.COMPLETE ?? 0} of {reports.totalTransfers}{" "}
+                transfers complete
+              </span>
+            </div>
+          </section>
+
+          <div className="reports-grid">
+            <section
+              className="report-card"
+              aria-labelledby="risk-distribution-title"
+            >
+              <header className="report-card-header">
+                <h2 id="risk-distribution-title">Risk distribution</h2>
+                <p>Current risk level across all transfers</p>
+              </header>
+
+              <div className="risk-stack" aria-hidden="true">
+                {RISK_ORDER.map((level) =>
+                  reports.byRisk[level] > 0 ? (
+                    <span
+                      key={level}
+                      className={`risk-stack-segment ${level.toLowerCase()}`}
+                      style={{
+                        width: `${shareOf(reports.byRisk[level], riskTotal)}%`,
+                      }}
+                    />
+                  ) : null,
+                )}
+              </div>
+
+              <ul className="risk-legend">
+                {RISK_ORDER.map((level) => (
+                  <li key={level} className="risk-legend-row">
+                    <span className={`risk-badge ${level.toLowerCase()}`}>
+                      <span className="risk-dot" aria-hidden="true" />
+                      {RISK_LABELS[level]}
+                    </span>
+                    <span className="risk-legend-count">
+                      <strong>{reports.byRisk[level]}</strong>
+                      <span>
+                        {Math.round(shareOf(reports.byRisk[level], riskTotal))}%
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section
+              className="report-card"
+              aria-labelledby="status-breakdown-title"
+            >
+              <header className="report-card-header">
+                <h2 id="status-breakdown-title">Transfer status</h2>
+                <p>Where each transfer sits in the pipeline today</p>
+              </header>
+
+              <ul className="status-bars">
+                {STATUS_ORDER.map((key) => {
+                  const count = reports.byStatus[key] ?? 0;
+
+                  return (
+                    <li
+                      key={key}
+                      className={`status-bar-row ${
+                        key === "COMPLETE" ? "complete" : ""
+                      }`}
+                    >
+                      <span className="status-bar-label">
+                        {formatStatus(key)}
+                      </span>
+                      <span className="status-bar-track" aria-hidden="true">
+                        <span
+                          className="status-bar-fill"
+                          style={{ width: `${shareOf(count, statusMax)}%` }}
+                        />
+                      </span>
+                      <strong className="status-bar-count">{count}</strong>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          </div>
+
+          <section
+            className="transfer-section"
+            aria-labelledby="attention-needed-title"
+          >
+            <div className="section-heading">
+              <div>
+                <h2 id="attention-needed-title">Attention needed</h2>
+                <p>
+                  High and medium risk transfers, longest without activity
+                  first. Open a client to review the full transfer.
+                </p>
+              </div>
+
+              <div className="result-count">
+                {reports.attentionNeeded.length}{" "}
+                {reports.attentionNeeded.length === 1 ? "client" : "clients"}
+              </div>
+            </div>
+
+            {reports.attentionNeeded.length === 0 ? (
+              <div className="empty-state">
+                No transfers currently need attention.
+              </div>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Assets</th>
+                      <th>Status</th>
+                      <th>Risk</th>
+                      <th>Inactive</th>
+                      <th />
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {reports.attentionNeeded.map((transfer) => (
+                      <tr key={transfer.transferId}>
+                        <td>
+                          <div className="client-cell">
+                            <div className="client-avatar" aria-hidden="true">
+                              {getInitials(transfer.clientName)}
+                            </div>
+
+                            <div>
+                              <button
+                                type="button"
+                                className="client-link"
+                                onClick={(event) =>
+                                  onOpenTransfer(transfer, event.currentTarget)
+                                }
+                              >
+                                {transfer.clientName}
+                              </button>
+                              <div className="transfer-id">
+                                {transfer.accountType}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="amount-cell">
+                          {formatCurrency(transfer.transferAmount)}
+                        </td>
+
+                        <td>
+                          <span className="status-badge">
+                            {formatStatus(transfer.status)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div className="risk-cell attention-risk">
+                            <span
+                              className={`risk-badge ${transfer.riskLevel.toLowerCase()}`}
+                            >
+                              <span className="risk-dot" aria-hidden="true" />
+                              {transfer.riskLevel}
+                            </span>
+
+                            {transfer.riskReasons[0] && (
+                              <span className="attention-reason">
+                                {transfer.riskReasons[0]}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td>
+                          <span
+                            className={
+                              transfer.daysSinceActivity >= 7
+                                ? "stale-activity"
+                                : ""
+                            }
+                          >
+                            {formatDays(transfer.daysSinceActivity)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <button
+                            type="button"
+                            className="row-action"
+                            aria-label={`Open transfer details for ${transfer.clientName}`}
+                            onClick={(event) =>
+                              onOpenTransfer(transfer, event.currentTarget)
+                            }
+                          >
+                            →
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1247,6 +1635,63 @@ export default function App() {
   const [detailError, setDetailError] = useState("");
   const [detailRequest, setDetailRequest] = useState(0);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
+  const [view, setView] = useState<View>("dashboard");
+  const [reports, setReports] = useState<ReportsData | null>(null);
+  const [reportsStatus, setReportsStatus] = useState<ReportsStatus>("idle");
+  const [reportsError, setReportsError] = useState("");
+  const reportsInFlightRef = useRef(false);
+  const transferSectionRef = useRef<HTMLElement>(null);
+
+  // Loaded once per session; the report is only refetched after a failure.
+  const loadReports = useCallback(() => {
+    if (reportsInFlightRef.current) {
+      return;
+    }
+
+    reportsInFlightRef.current = true;
+    setReportsStatus("loading");
+    setReportsError("");
+
+    fetch(`${API_BASE}/api/reports`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `The reports service responded with status ${response.status}.`,
+          );
+        }
+
+        return response.json() as Promise<ReportsData>;
+      })
+      .then((data) => {
+        setReports(data);
+        setReportsStatus("success");
+      })
+      .catch((err: unknown) => {
+        setReportsError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Please check your connection and try again.",
+        );
+        setReportsStatus("error");
+      })
+      .finally(() => {
+        reportsInFlightRef.current = false;
+      });
+  }, []);
+
+  useEffect(() => {
+    if (view === "reports" && reportsStatus === "idle") {
+      loadReports();
+    }
+  }, [view, reportsStatus, loadReports]);
+
+  useEffect(() => {
+    if (view === "transfers") {
+      transferSectionRef.current?.scrollIntoView({ block: "start" });
+    } else {
+      window.scrollTo({ top: 0 });
+    }
+  }, [view]);
 
   const openTransfer = (transfer: Transfer, trigger: HTMLElement) => {
     lastTriggerRef.current = trigger;
@@ -1406,21 +1851,27 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="nav">
-            <button className="nav-item active">
-              <span className="nav-icon">⌂</span>
-              Dashboard
-            </button>
-
-            <button className="nav-item">
-              <span className="nav-icon">⇄</span>
-              Transfers
-            </button>
-
-            <button className="nav-item">
-              <span className="nav-icon">◫</span>
-              Reports
-            </button>
+          <nav className="nav" aria-label="Main">
+            {(
+              [
+                { id: "dashboard", icon: "⌂", label: "Dashboard" },
+                { id: "transfers", icon: "⇄", label: "Transfers" },
+                { id: "reports", icon: "◫", label: "Reports" },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`nav-item ${view === item.id ? "active" : ""}`}
+                aria-current={view === item.id ? "page" : undefined}
+                onClick={() => setView(item.id)}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+                {item.label}
+              </button>
+            ))}
           </nav>
         </div>
 
@@ -1437,204 +1888,216 @@ export default function App() {
       </aside>
 
       <main className="main-content">
-        <header className="page-header">
-          <div>
-            <p className="eyebrow">TRANSFER OPERATIONS</p>
-            <h1>Good evening, {CURRENT_ADVISOR.firstName}.</h1>
-            <p className="header-copy">
-              Here's where your client transfers need attention today.
-            </p>
-          </div>
+        {view === "reports" ? (
+          <ReportsView
+            reports={reports}
+            status={reportsStatus}
+            error={reportsError}
+            onRetry={loadReports}
+            onOpenTransfer={openTransfer}
+          />
+        ) : (
+          <>
+            <header className="page-header">
+              <div>
+                <p className="eyebrow">TRANSFER OPERATIONS</p>
+                <h1>Good evening, {CURRENT_ADVISOR.firstName}.</h1>
+                <p className="header-copy">
+                  Here's where your client transfers need attention today.
+                </p>
+              </div>
 
-          <div className="system-status">
-            <span className="status-dot" />
-            Live data
-          </div>
-        </header>
+              <div className="system-status">
+                <span className="status-dot" />
+                Live data
+              </div>
+            </header>
 
-        <section className="metrics-grid">
-          <article className="metric-card">
-            <div className="metric-label">Total transfers</div>
-            <div className="metric-value">{transfers.length}</div>
-            <div className="metric-caption">Active transfer book</div>
-          </article>
+            <section className="metrics-grid">
+              <article className="metric-card">
+                <div className="metric-label">Total transfers</div>
+                <div className="metric-value">{transfers.length}</div>
+                <div className="metric-caption">Active transfer book</div>
+              </article>
 
-          <article className="metric-card danger-card">
-            <div className="metric-label">High risk</div>
-            <div className="metric-value">{metrics.highRisk}</div>
-            <div className="metric-caption danger-text">
-              Immediate attention recommended
-            </div>
-          </article>
+              <article className="metric-card danger-card">
+                <div className="metric-label">High risk</div>
+                <div className="metric-value">{metrics.highRisk}</div>
+                <div className="metric-caption danger-text">
+                  Immediate attention recommended
+                </div>
+              </article>
 
-          <article className="metric-card">
-            <div className="metric-label">Needs attention</div>
-            <div className="metric-value">{metrics.needsAttention}</div>
-            <div className="metric-caption">High + medium risk</div>
-          </article>
+              <article className="metric-card">
+                <div className="metric-label">Needs attention</div>
+                <div className="metric-value">{metrics.needsAttention}</div>
+                <div className="metric-caption">High + medium risk</div>
+              </article>
 
-          <article className="metric-card">
-            <div className="metric-label">Transfer assets</div>
-            <div className="metric-value metric-currency">
-              {formatCurrency(metrics.assets)}
-            </div>
-            <div className="metric-caption">
-              {metrics.complete} transfers complete
-            </div>
-          </article>
-        </section>
+              <article className="metric-card">
+                <div className="metric-label">Transfer assets</div>
+                <div className="metric-value metric-currency">
+                  {formatCurrency(metrics.assets)}
+                </div>
+                <div className="metric-caption">
+                  {metrics.complete} transfers complete
+                </div>
+              </article>
+            </section>
 
-        <section className="transfer-section">
-          <div className="section-heading">
-            <div>
-              <h2>Client transfers</h2>
-              <p>
-                Prioritized automatically by transfer risk and recent activity.
-              </p>
-            </div>
+            <section className="transfer-section" ref={transferSectionRef}>
+              <div className="section-heading">
+                <div>
+                  <h2>Client transfers</h2>
+                  <p>
+                    Prioritized automatically by transfer risk and recent activity.
+                  </p>
+                </div>
 
-            <div className="result-count">
-              {filteredTransfers.length} results
-            </div>
-          </div>
+                <div className="result-count">
+                  {filteredTransfers.length} results
+                </div>
+              </div>
 
-          <div className="toolbar">
-            <div className="search-wrapper">
-              <span className="search-icon">⌕</span>
-              <input
-                type="search"
-                placeholder="Search clients or account types..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
+              <div className="toolbar">
+                <div className="search-wrapper">
+                  <span className="search-icon">⌕</span>
+                  <input
+                    type="search"
+                    placeholder="Search clients or account types..."
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
 
-            <div className="filter-group">
-              {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((level) => (
-                <button
-                  key={level}
-                  className={`filter-button ${
-                    riskFilter === level ? "selected" : ""
-                  }`}
-                  onClick={() => setRiskFilter(level)}
-                >
-                  {level === "ALL"
-                    ? "All"
-                    : level.charAt(0) + level.slice(1).toLowerCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {loading && (
-            <div className="state-message">Loading client transfers…</div>
-          )}
-
-          {error && <div className="state-message error-message">{error}</div>}
-
-          {!loading && !error && (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Client</th>
-                    <th>Account</th>
-                    <th>Assets</th>
-                    <th>Status</th>
-                    <th>Risk</th>
-                    <th>Last activity</th>
-                    <th />
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredTransfers.map((transfer) => (
-                    <tr key={transfer.transferId}>
-                      <td>
-                        <div className="client-cell">
-                          <div className="client-avatar">
-                            {getInitials(transfer.clientName)}
-                          </div>
-
-                          <div>
-                            <div className="client-name">
-                              {transfer.clientName}
-                            </div>
-                            <div className="transfer-id">
-                              {transfer.transferId.replace("TRANSFER#", "TR-")}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>{transfer.accountType}</td>
-
-                      <td className="amount-cell">
-                        {formatCurrency(transfer.transferAmount)}
-                      </td>
-
-                      <td>
-                        <span className="status-badge">
-                          {formatStatus(transfer.status)}
-                        </span>
-                      </td>
-
-                      <td>
-                        <div className="risk-cell">
-                          <span
-                            className={`risk-badge ${transfer.riskLevel.toLowerCase()}`}
-                          >
-                            <span className="risk-dot" />
-                            {transfer.riskLevel}
-                          </span>
-
-                          {transfer.riskReasons[0] && (
-                            <span className="risk-reason">
-                              {transfer.riskReasons[0]}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td>
-                        <span
-                          className={
-                            transfer.daysSinceActivity >= 7
-                              ? "stale-activity"
-                              : ""
-                          }
-                        >
-                          {transfer.daysSinceActivity === 1
-                            ? "1 day ago"
-                            : `${transfer.daysSinceActivity} days ago`}
-                        </span>
-                      </td>
-
-                      <td>
-                        <button
-                          type="button"
-                          className="row-action"
-                          aria-label={`Open transfer details for ${transfer.clientName}`}
-                          onClick={(event) =>
-                            openTransfer(transfer, event.currentTarget)
-                          }
-                        >
-                          →
-                        </button>
-                      </td>
-                    </tr>
+                <div className="filter-group">
+                  {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((level) => (
+                    <button
+                      key={level}
+                      className={`filter-button ${
+                        riskFilter === level ? "selected" : ""
+                      }`}
+                      onClick={() => setRiskFilter(level)}
+                    >
+                      {level === "ALL"
+                        ? "All"
+                        : level.charAt(0) + level.slice(1).toLowerCase()}
+                    </button>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
 
-              {filteredTransfers.length === 0 && (
-                <div className="empty-state">
-                  No transfers match your current filters.
+              {loading && (
+                <div className="state-message">Loading client transfers…</div>
+              )}
+
+              {error && <div className="state-message error-message">{error}</div>}
+
+              {!loading && !error && (
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Account</th>
+                        <th>Assets</th>
+                        <th>Status</th>
+                        <th>Risk</th>
+                        <th>Last activity</th>
+                        <th />
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {filteredTransfers.map((transfer) => (
+                        <tr key={transfer.transferId}>
+                          <td>
+                            <div className="client-cell">
+                              <div className="client-avatar">
+                                {getInitials(transfer.clientName)}
+                              </div>
+
+                              <div>
+                                <div className="client-name">
+                                  {transfer.clientName}
+                                </div>
+                                <div className="transfer-id">
+                                  {transfer.transferId.replace("TRANSFER#", "TR-")}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>{transfer.accountType}</td>
+
+                          <td className="amount-cell">
+                            {formatCurrency(transfer.transferAmount)}
+                          </td>
+
+                          <td>
+                            <span className="status-badge">
+                              {formatStatus(transfer.status)}
+                            </span>
+                          </td>
+
+                          <td>
+                            <div className="risk-cell">
+                              <span
+                                className={`risk-badge ${transfer.riskLevel.toLowerCase()}`}
+                              >
+                                <span className="risk-dot" />
+                                {transfer.riskLevel}
+                              </span>
+
+                              {transfer.riskReasons[0] && (
+                                <span className="risk-reason">
+                                  {transfer.riskReasons[0]}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td>
+                            <span
+                              className={
+                                transfer.daysSinceActivity >= 7
+                                  ? "stale-activity"
+                                  : ""
+                              }
+                            >
+                              {transfer.daysSinceActivity === 1
+                                ? "1 day ago"
+                                : `${transfer.daysSinceActivity} days ago`}
+                            </span>
+                          </td>
+
+                          <td>
+                            <button
+                              type="button"
+                              className="row-action"
+                              aria-label={`Open transfer details for ${transfer.clientName}`}
+                              onClick={(event) =>
+                                openTransfer(transfer, event.currentTarget)
+                              }
+                            >
+                              →
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {filteredTransfers.length === 0 && (
+                    <div className="empty-state">
+                      No transfers match your current filters.
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-        </section>
+            </section>
+          </>
+        )}
       </main>
 
       {selectedTransfer && (
