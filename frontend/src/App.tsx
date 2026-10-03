@@ -5,15 +5,66 @@ import "./index.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
-const CURRENT_ADVISOR = {
-  name: "Alex Rivera",
-  firstName: "Alex",
-  role: "Financial Advisor",
+type Advisor = {
+  id: string;
+  name: string;
+  firstName: string;
+  role: string;
 };
+
+// Lightweight stand-in for real auth: pick who you are. IDs mirror the two
+// advisors in the seed data (ADVISOR#001/002); the extra entry keeps the
+// original demo persona. Attribution (addressedBy) uses the selected name.
+const ADVISORS: Advisor[] = [
+  {
+    id: "ADVISOR#001",
+    name: "Alex Rivera",
+    firstName: "Alex",
+    role: "Financial Advisor",
+  },
+  {
+    id: "ADVISOR#002",
+    name: "Jordan Chen",
+    firstName: "Jordan",
+    role: "Financial Advisor",
+  },
+  {
+    id: "ADVISOR#003",
+    name: "Sam Patel",
+    firstName: "Sam",
+    role: "Senior Advisor",
+  },
+];
+
+const ADVISOR_STORAGE_KEY = "transferReady.currentAdvisorId.v1";
+
+function loadCurrentAdvisor(): Advisor {
+  try {
+    const id = window.localStorage.getItem(ADVISOR_STORAGE_KEY);
+    const match = ADVISORS.find((advisor) => advisor.id === id);
+    if (match) {
+      return match;
+    }
+  } catch {
+    // Storage unavailable; fall through to default.
+  }
+
+  return ADVISORS[0];
+}
+
+function saveCurrentAdvisor(id: string) {
+  try {
+    window.localStorage.setItem(ADVISOR_STORAGE_KEY, id);
+  } catch {
+    // Non-fatal; selection still applies for this session.
+  }
+}
 
 const ADVISOR_NAME_PLACEHOLDER = "[Advisor name]";
 
 type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
+
+type ReviewStatus = "ACTIVE" | "IN_PROGRESS";
 
 type Transfer = {
   transferId: string;
@@ -24,6 +75,9 @@ type Transfer = {
   riskLevel: RiskLevel;
   riskReasons: string[];
   daysSinceActivity: number;
+  reviewStatus: ReviewStatus;
+  addressedAt: string | null;
+  addressedBy: string | null;
 };
 
 type ClientDetail = {
@@ -356,8 +410,8 @@ function readDraftBody(container: HTMLElement) {
 
 // Fills in the signature placeholder the model leaves in generated drafts.
 // Only the exact placeholder is replaced; the rest of the text is untouched.
-function fillAdvisorPlaceholder(text: string) {
-  return text.split(ADVISOR_NAME_PLACEHOLDER).join(CURRENT_ADVISOR.name);
+function fillAdvisorPlaceholder(text: string, advisorName: string) {
+  return text.split(ADVISOR_NAME_PLACEHOLDER).join(advisorName);
 }
 
 function clampPercent(value: number) {
@@ -376,13 +430,49 @@ function formatDays(days: number) {
   return days === 1 ? "1 day" : `${days} days`;
 }
 
+// Compact "addressed X ago" relative time, used by the In Progress view.
+function formatRelativeTime(value: string) {
+  const then = new Date(value).getTime();
+
+  if (Number.isNaN(then)) {
+    return "just now";
+  }
+
+  const diffMs = Date.now() - then;
+  const minutes = Math.floor(diffMs / (1000 * 60));
+
+  if (minutes < 1) {
+    return "just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+
+  return formatDate(value);
+}
+
 type TransferDrawerProps = {
   clientName: string;
   detail: TransferDetail | null;
   loading: boolean;
   error: string;
+  advisor: Advisor;
   onClose: () => void;
   onRetry: () => void;
+  onMarkInProgress: (transferId: string) => void;
 };
 
 function TransferDrawer({
@@ -390,8 +480,10 @@ function TransferDrawer({
   detail,
   loading,
   error,
+  advisor,
   onClose,
   onRetry,
+  onMarkInProgress,
 }: TransferDrawerProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const analysisHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -523,7 +615,7 @@ function TransferDrawer({
         return response.json() as Promise<FollowUpDraft>;
       })
       .then((data) => {
-        setFollowUp({ ...data, body: fillAdvisorPlaceholder(data.body) });
+        setFollowUp({ ...data, body: fillAdvisorPlaceholder(data.body, advisor.name) });
         setDraftSubject(data.subject);
         setCopyStatus("idle");
         setFollowUpStatus("success");
@@ -857,9 +949,8 @@ function TransferDrawer({
                       <span className="ai-mark" aria-hidden="true">
                         ✦
                       </span>
-                      AI Analysis
+                      Analysis
                     </h3>
-                    <span className="ai-tag">AI-assisted</span>
                   </header>
 
                   <p className="ai-summary">{analysis.summary}</p>
@@ -891,9 +982,11 @@ function TransferDrawer({
                   )}
 
                   {analysis.citations.length > 0 && (
-                    <div className="ai-block">
-                      <h4>
-                        Grounded in firm procedures
+                    <details className="ai-block ai-citations-block">
+                      <summary className="ai-citations-summary">
+                        <span className="ai-citations-summary-label">
+                          Grounded in firm procedures
+                        </span>
                         <span className="drawer-count">
                           {analysis.citations.length}{" "}
                           {analysis.citations.length === 1
@@ -906,7 +999,10 @@ function TransferDrawer({
                                 : "sources"
                             }`}
                         </span>
-                      </h4>
+                        <span className="ai-citations-chevron" aria-hidden="true">
+                          ⌄
+                        </span>
+                      </summary>
                       <ul className="ai-citations">
                         {analysis.citations.map((citation, index) => (
                           <li
@@ -925,12 +1021,12 @@ function TransferDrawer({
                           </li>
                         ))}
                       </ul>
-                    </div>
+                    </details>
                   )}
 
                   <p className="ai-disclaimer">
-                    AI-assisted analysis grounded in transfer data and firm
-                    procedures. Advisor review required.
+                    Analysis grounded in transfer data and firm procedures.
+                    Advisor review required.
                   </p>
                 </section>
               )}
@@ -956,7 +1052,6 @@ function TransferDrawer({
 
                     <div className="followup-tags">
                       <span className="followup-draft-tag">Draft</span>
-                      <span className="ai-tag">AI-assisted</span>
                     </div>
                   </header>
 
@@ -1250,7 +1345,7 @@ function TransferDrawer({
                   type="button"
                   className="footer-link"
                   onClick={scrollToAnalysis}
-                  aria-label="Analysis complete. Jump to AI analysis"
+                  aria-label="Analysis complete. Jump to analysis"
                 >
                   <span aria-hidden="true">✓</span> Analysis complete
                 </button>
@@ -1281,14 +1376,28 @@ function TransferDrawer({
               )}
 
               {followUpStatus === "success" ? (
-                <button
-                  type="button"
-                  className="drawer-complete-button"
-                  onClick={scrollToFollowUp}
-                  aria-label="Follow-up draft ready. Jump to draft for review"
-                >
-                  Review follow-up draft
-                </button>
+                <div className="footer-actions">
+                  <button
+                    type="button"
+                    className="drawer-complete-button"
+                    onClick={scrollToFollowUp}
+                    aria-label="Follow-up draft ready. Jump to draft for review"
+                  >
+                    Review follow-up draft
+                  </button>
+                  <button
+                    type="button"
+                    className="drawer-progress-button"
+                    onClick={() => {
+                      if (detail) {
+                        onMarkInProgress(detail.transfer.transferId);
+                      }
+                    }}
+                    aria-label="Mark this transfer as in progress and move it off the active list"
+                  >
+                    <Icon name="doc-ok" onDark /> Mark as In Progress
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -1327,8 +1436,8 @@ function TransferDrawer({
                 analysisStatus === "loading"
                   ? "Analyzing transfer"
                   : analysisStatus === "error"
-                    ? "Retry AI analysis"
-                    : "Analyze this transfer with AI"
+                    ? "Retry analysis"
+                    : "Analyze this transfer"
               }
             >
               {analysisStatus === "loading" ? (
@@ -1337,7 +1446,7 @@ function TransferDrawer({
                 "Retry analysis"
               ) : (
                 <>
-                  <Icon name="idea" onDark /> Analyze with AI
+                  <Icon name="idea" onDark /> Analyze
                 </>
               )}
             </button>
@@ -1388,11 +1497,6 @@ function ReportsView({
             Portfolio-level visibility into transfer risk, delays, and assets
             requiring attention.
           </p>
-        </div>
-
-        <div className="system-status">
-          <span className="status-dot" />
-          Live data
         </div>
       </header>
 
@@ -1690,6 +1794,142 @@ function ReportsView({
   );
 }
 
+type InProgressViewProps = {
+  transfers: Transfer[];
+  onOpenTransfer: (transfer: Transfer, trigger: HTMLElement) => void;
+  onReturnToActive: (transferId: string) => void;
+};
+
+function InProgressView({
+  transfers,
+  onOpenTransfer,
+  onReturnToActive,
+}: InProgressViewProps) {
+  return (
+    <>
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">TRANSFER OPERATIONS</p>
+          <h1>In progress</h1>
+          <p className="header-copy">
+            Transfers you've reviewed and addressed. Kept here so the team
+            doesn't send duplicate outreach while a case is being handled.
+          </p>
+        </div>
+      </header>
+
+      <section
+        className="transfer-section"
+        aria-labelledby="in-progress-title"
+      >
+        <div className="section-heading">
+          <div>
+            <h2 id="in-progress-title">Addressed transfers</h2>
+            <p>Most recently addressed first.</p>
+          </div>
+
+          <div className="result-count">
+            {transfers.length} {transfers.length === 1 ? "transfer" : "transfers"}
+          </div>
+        </div>
+
+        {transfers.length === 0 ? (
+          <div className="empty-state">
+            Nothing in progress yet. Open a transfer, analyze it, and generate a
+            follow-up to mark it as in progress.
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Account</th>
+                  <th>Assets</th>
+                  <th>Status</th>
+                  <th>Last addressed</th>
+                  <th />
+                </tr>
+              </thead>
+
+              <tbody>
+                {transfers.map((transfer) => {
+                  return (
+                    <tr key={transfer.transferId}>
+                      <td>
+                        <div className="client-cell">
+                          <div className="client-avatar">
+                            {getInitials(transfer.clientName)}
+                          </div>
+
+                          <div>
+                            <button
+                              type="button"
+                              className="client-link"
+                              onClick={(event) =>
+                                onOpenTransfer(transfer, event.currentTarget)
+                              }
+                            >
+                              {transfer.clientName}
+                            </button>
+                            <div className="transfer-id">
+                              {transfer.transferId.replace("TRANSFER#", "TR-")}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td>{transfer.accountType}</td>
+
+                      <td className="amount-cell">
+                        {formatCurrency(transfer.transferAmount)}
+                      </td>
+
+                      <td>
+                        <span className="status-badge">
+                          {formatStatus(transfer.status)}
+                        </span>
+                      </td>
+
+                      <td>
+                        {transfer.addressedAt ? (
+                          <div className="addressed-cell">
+                            <span className="addressed-time">
+                              {formatRelativeTime(transfer.addressedAt)}
+                            </span>
+                            {transfer.addressedBy && (
+                              <span className="addressed-by">
+                                by {transfer.addressedBy}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="drawer-secondary-button return-active-button"
+                          onClick={() => onReturnToActive(transfer.transferId)}
+                          aria-label={`Return ${transfer.clientName}'s transfer to the active list`}
+                        >
+                          Return to active
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
 export default function App() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1705,11 +1945,11 @@ export default function App() {
   const [detailRequest, setDetailRequest] = useState(0);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
   const [view, setView] = useState<View>("dashboard");
+  const [advisor, setAdvisor] = useState<Advisor>(() => loadCurrentAdvisor());
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [reportsStatus, setReportsStatus] = useState<ReportsStatus>("idle");
   const [reportsError, setReportsError] = useState("");
   const reportsInFlightRef = useRef(false);
-  const transferSectionRef = useRef<HTMLElement>(null);
 
   // Loaded once per session; the report is only refetched after a failure.
   const loadReports = useCallback(() => {
@@ -1755,11 +1995,7 @@ export default function App() {
   }, [view, reportsStatus, loadReports]);
 
   useEffect(() => {
-    if (view === "transfers") {
-      transferSectionRef.current?.scrollIntoView({ block: "start" });
-    } else {
-      window.scrollTo({ top: 0 });
-    }
+    window.scrollTo({ top: 0 });
   }, [view]);
 
   const openTransfer = (transfer: Transfer, trigger: HTMLElement) => {
@@ -1774,6 +2010,95 @@ export default function App() {
     setDetailError("");
     setDetailLoading(false);
     lastTriggerRef.current?.focus();
+  }, []);
+
+  // Marks a transfer as addressed via the shared backend state so other
+  // advisors see it move off the active list (no duplicate outreach). Updates
+  // local state from the server response and closes the drawer.
+  const markInProgress = useCallback(
+    (transferId: string) => {
+      fetch(
+        `${API_BASE}/api/transfers/${encodeURIComponent(transferId)}/progress`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewStatus: "IN_PROGRESS",
+            addressedBy: advisor.name,
+          }),
+        },
+      )
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}.`);
+          }
+          return response.json() as Promise<{
+            reviewStatus: ReviewStatus;
+            addressedAt: string | null;
+            addressedBy: string | null;
+          }>;
+        })
+        .then((updated) => {
+          setTransfers((current) =>
+            current.map((transfer) =>
+              transfer.transferId === transferId
+                ? {
+                    ...transfer,
+                    reviewStatus: updated.reviewStatus,
+                    addressedAt: updated.addressedAt,
+                    addressedBy: updated.addressedBy,
+                  }
+                : transfer,
+            ),
+          );
+        })
+        .catch(() => {
+          // Keep it simple for the demo: surface via the existing error banner.
+          setError("We couldn't update this transfer. Please try again.");
+        });
+
+      closeDrawer();
+    },
+    [advisor.name, closeDrawer],
+  );
+
+  // Undo: returns an addressed transfer to the active list (shared state).
+  const returnToActive = useCallback((transferId: string) => {
+    fetch(
+      `${API_BASE}/api/transfers/${encodeURIComponent(transferId)}/progress`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewStatus: "ACTIVE" }),
+      },
+    )
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}.`);
+        }
+        return response.json() as Promise<{
+          reviewStatus: ReviewStatus;
+          addressedAt: string | null;
+          addressedBy: string | null;
+        }>;
+      })
+      .then((updated) => {
+        setTransfers((current) =>
+          current.map((transfer) =>
+            transfer.transferId === transferId
+              ? {
+                  ...transfer,
+                  reviewStatus: updated.reviewStatus,
+                  addressedAt: updated.addressedAt,
+                  addressedBy: updated.addressedBy,
+                }
+              : transfer,
+          ),
+        );
+      })
+      .catch(() => {
+        setError("We couldn't update this transfer. Please try again.");
+      });
   }, []);
 
   const selectedTransferId = selectedTransfer?.transferId ?? null;
@@ -1896,6 +2221,12 @@ export default function App() {
     const query = search.trim().toLowerCase();
 
     return transfers.filter((transfer) => {
+      // Addressed transfers move to the In Progress tab, so they drop off the
+      // active Dashboard list to prevent duplicate outreach.
+      if (transfer.reviewStatus === "IN_PROGRESS") {
+        return false;
+      }
+
       const matchesSearch =
         transfer.clientName.toLowerCase().includes(query) ||
         transfer.accountType.toLowerCase().includes(query);
@@ -1906,6 +2237,19 @@ export default function App() {
       return matchesSearch && matchesRisk;
     });
   }, [transfers, search, riskFilter]);
+
+  // Addressed transfers, most recently addressed first, for the In Progress tab.
+  const inProgressTransfers = useMemo(
+    () =>
+      transfers
+        .filter((transfer) => transfer.reviewStatus === "IN_PROGRESS")
+        .sort((a, b) => {
+          const at = a.addressedAt ? new Date(a.addressedAt).getTime() : 0;
+          const bt = b.addressedAt ? new Date(b.addressedAt).getTime() : 0;
+          return bt - at;
+        }),
+    [transfers],
+  );
 
   return (
     <div className="app-shell">
@@ -1925,7 +2269,7 @@ export default function App() {
             {(
               [
                 { id: "dashboard", icon: "pie", label: "Dashboard" },
-                { id: "transfers", icon: "exchange", label: "Transfers" },
+                { id: "transfers", icon: "exchange", label: "In Progress" },
                 { id: "reports", icon: "bar", label: "Reports" },
               ] as const
             ).map((item) => (
@@ -1938,6 +2282,9 @@ export default function App() {
               >
                 <Icon name={item.icon} onDark />
                 {item.label}
+                {item.id === "transfers" && inProgressTransfers.length > 0 && (
+                  <span className="nav-badge">{inProgressTransfers.length}</span>
+                )}
               </button>
             ))}
           </nav>
@@ -1945,15 +2292,36 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="sidebar-advisor">
-            <div className="advisor-avatar">
-              {getInitials(CURRENT_ADVISOR.name)}
-            </div>
+            <div className="advisor-avatar">{getInitials(advisor.name)}</div>
 
             <div>
-              <div className="advisor-name">{CURRENT_ADVISOR.name}</div>
-              <div className="advisor-role">{CURRENT_ADVISOR.role}</div>
+              <div className="advisor-name">{advisor.name}</div>
+              <div className="advisor-role">{advisor.role}</div>
             </div>
           </div>
+
+          <label className="advisor-switcher">
+            <span className="advisor-switcher-label">Signed in as</span>
+            <select
+              className="advisor-switcher-select"
+              value={advisor.id}
+              onChange={(event) => {
+                const next = ADVISORS.find((a) => a.id === event.target.value);
+                if (next) {
+                  setAdvisor(next);
+                  saveCurrentAdvisor(next.id);
+                }
+              }}
+              aria-label="Switch advisor"
+            >
+              {ADVISORS.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <div className="sidebar-legal">Member FINRA/SIPC</div>
         </div>
       </aside>
@@ -1967,12 +2335,18 @@ export default function App() {
             onRetry={loadReports}
             onOpenTransfer={openTransfer}
           />
+        ) : view === "transfers" ? (
+          <InProgressView
+            transfers={inProgressTransfers}
+            onOpenTransfer={openTransfer}
+            onReturnToActive={returnToActive}
+          />
         ) : (
           <>
             <header className="page-header hero">
               <div className="hero-copy">
                 <p className="eyebrow">TRANSFER OPERATIONS</p>
-                <h1>Good evening, {CURRENT_ADVISOR.firstName}.</h1>
+                <h1>Good evening, {advisor.firstName}.</h1>
                 <p className="header-copy">
                   Here's where your client transfers need attention today.
                 </p>
@@ -1985,11 +2359,6 @@ export default function App() {
                     year: "numeric",
                   }).format(new Date())}
                 </p>
-              </div>
-
-              <div className="system-status">
-                <span className="status-dot" />
-                Live data
               </div>
 
               <HeroChevrons />
@@ -2039,7 +2408,7 @@ export default function App() {
               </article>
             </section>
 
-            <section className="transfer-section" ref={transferSectionRef}>
+            <section className="transfer-section">
               <div className="section-heading">
                 <div>
                   <h2>Client transfers</h2>
@@ -2206,8 +2575,10 @@ export default function App() {
           detail={detail}
           loading={detailLoading}
           error={detailError}
+          advisor={advisor}
           onClose={closeDrawer}
           onRetry={() => setDetailRequest((count) => count + 1)}
+          onMarkInProgress={markInProgress}
         />
       )}
     </div>

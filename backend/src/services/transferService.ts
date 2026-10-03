@@ -4,7 +4,12 @@ import { AccountRepository } from "../repositories/accountRepository.js";
 import { RequirementRepository } from "../repositories/requirementRepository.js";
 import { InteractionRepository } from "../repositories/interactionRepository.js";
 import { RiskService } from "./riskService.js";
-import type { DashboardTransfer, TransferDetail } from "../types/index.js";
+import type {
+  DashboardTransfer,
+  ReviewStatus,
+  Transfer,
+  TransferDetail,
+} from "../types/index.js";
 
 export class TransferService {
   constructor(
@@ -41,6 +46,9 @@ export class TransferService {
         riskLevel: risk.level,
         riskReasons: risk.reasons,
         daysSinceActivity: this.risk.daysSinceActivity(t, now),
+        reviewStatus: t.reviewStatus ?? "ACTIVE",
+        addressedAt: t.addressedAt ?? null,
+        addressedBy: t.addressedBy ?? null,
       });
     }
     // Highest risk first for the advisor dashboard.
@@ -62,6 +70,47 @@ export class TransferService {
     ]);
 
     const risk = this.risk.score(transfer, requirements, interactions);
-    return { client, account, transfer, requirements, interactions, risk };
+    const normalizedTransfer: Transfer = {
+      ...transfer,
+      reviewStatus: transfer.reviewStatus ?? "ACTIVE",
+      addressedAt: transfer.addressedAt ?? null,
+      addressedBy: transfer.addressedBy ?? null,
+    };
+    return {
+      client,
+      account,
+      transfer: normalizedTransfer,
+      requirements,
+      interactions,
+      risk,
+    };
+  }
+
+  /**
+   * PATCH /api/transfers/:id/progress — marks a transfer in progress (or
+   * returns it to active). Shared state so advisors avoid duplicate outreach.
+   * `addressedBy` is required when marking in progress for real attribution.
+   * Returns the updated transfer, or null if it doesn't exist.
+   */
+  async setProgress(
+    transferId: string,
+    reviewStatus: ReviewStatus,
+    addressedBy?: string | null
+  ): Promise<Transfer | null> {
+    if (reviewStatus === "IN_PROGRESS") {
+      const by = addressedBy?.trim();
+      if (!by) {
+        throw new Error("addressedBy is required when marking in progress");
+      }
+      return this.transfers.setReviewState(
+        transferId,
+        "IN_PROGRESS",
+        new Date().toISOString(),
+        by
+      );
+    }
+
+    // Returning to active clears the attribution.
+    return this.transfers.setReviewState(transferId, "ACTIVE", null, null);
   }
 }

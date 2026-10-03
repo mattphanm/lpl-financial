@@ -53,6 +53,13 @@ export type InteractionDirection = "INBOUND" | "OUTBOUND";
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
 
+/**
+ * Shared review state for the "in progress" workflow. ACTIVE = on the active
+ * dashboard list; IN_PROGRESS = an advisor has addressed it (reviewed +
+ * generated a follow-up) so the team avoids duplicate outreach.
+ */
+export type ReviewStatus = "ACTIVE" | "IN_PROGRESS";
+
 /* --------------------------- Entities ---------------------------- */
 
 export interface Client {
@@ -93,6 +100,16 @@ export interface Transfer {
    * from interaction free-text.
    */
   hasUnresolvedClientQuestion: boolean;
+  /**
+   * Shared "in progress" review state so advisors don't duplicate outreach.
+   * Absent/"ACTIVE" means the transfer is on the active dashboard list;
+   * "IN_PROGRESS" means an advisor has reviewed and addressed it.
+   */
+  reviewStatus?: ReviewStatus;
+  /** ISO timestamp of when the transfer was last marked in progress. */
+  addressedAt?: string | null;
+  /** Display name of the advisor who marked it in progress. */
+  addressedBy?: string | null;
 }
 
 export interface Requirement {
@@ -136,6 +153,12 @@ export interface DashboardTransfer {
   riskLevel: RiskLevel;
   riskReasons: string[];
   daysSinceActivity: number;
+  /** Shared review state (ACTIVE by default; IN_PROGRESS once addressed). */
+  reviewStatus: ReviewStatus;
+  /** When the transfer was last marked in progress, if ever. */
+  addressedAt: string | null;
+  /** Who marked it in progress, if anyone. */
+  addressedBy: string | null;
 }
 
 /** Full detail payload (GET /api/transfers/:id). */

@@ -91,6 +91,9 @@ export class ReportService {
         riskLevel: risk.level,
         riskReasons: risk.reasons,
         daysSinceActivity: days,
+        reviewStatus: t.reviewStatus ?? "ACTIVE",
+        addressedAt: t.addressedAt ?? null,
+        addressedBy: t.addressedBy ?? null,
       });
     }
 

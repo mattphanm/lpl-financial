@@ -116,10 +116,16 @@ button {
 
 .sidebar-footer {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
   padding: 16px 8px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.sidebar-advisor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .advisor-avatar {
@@ -2820,4 +2826,165 @@ tbody tr:hover {
   color: var(--navy-900);
   font-size: 13px;
   font-weight: 700;
+}
+
+/* In-progress workflow */
+
+.footer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drawer-progress-button {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: #176a4f;
+  color: white;
+  font-size: 14px;
+  font-weight: 650;
+  transition: 140ms ease;
+}
+
+.drawer-progress-button:hover {
+  background: #12583f;
+}
+
+.drawer-progress-button:focus-visible {
+  outline: 2px solid #a6531e;
+  outline-offset: 2px;
+}
+
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #176a4f;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.addressed-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.addressed-time {
+  color: #1b2440;
+  font-weight: 600;
+}
+
+.addressed-by {
+  color: #5a6280;
+  font-size: 12px;
+}
+
+.return-active-button {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Advisor switcher (lightweight "who am I" selector) */
+
+.advisor-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advisor-switcher-label {
+  color: #9aa3bf;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.advisor-switcher-select {
+  width: 100%;
+  appearance: none;
+  padding: 7px 40px 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 10'%3E%3Cpath d='m1 1 8 8 8-8' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 16px center / 18px 10px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.advisor-switcher-select:focus-visible {
+  outline: 2px solid #a6531e;
+  outline-offset: 1px;
+}
+
+.advisor-switcher-select option {
+  color: #1b2440;
+}
+
+/* Collapsible "Grounded in firm procedures" citations */
+
+.ai-citations-block {
+  border-top: 1px solid #e3e6ef;
+  padding-top: 14px;
+}
+
+.ai-citations-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  color: #0a1f5c;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Hide the native disclosure triangle across browsers. */
+.ai-citations-summary::-webkit-details-marker {
+  display: none;
+}
+.ai-citations-summary::marker {
+  content: "";
+}
+
+.ai-citations-summary:focus-visible {
+  outline: 2px solid #a6531e;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.ai-citations-summary .drawer-count {
+  font-weight: 500;
+}
+
+.ai-citations-chevron {
+  margin-left: auto;
+  font-size: 14px;
+  line-height: 1;
+  color: #6f768a;
+  transition: transform 150ms ease;
+}
+
+.ai-citations-block[open] .ai-citations-chevron {
+  transform: rotate(180deg);
+}
+
+.ai-citations-block .ai-citations {
+  margin-top: 12px;
 }
