@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" font-family="Inter, Arial, sans-serif" fill="#17324d">
+  <style>
+    .lane { fill:#ffffff; stroke:#b7c8d6; stroke-width:1; }
+    .lane-title { fill:#2a6fb0; font-size:15px; font-weight:600; }
+    .input  { fill:#edf4f8; stroke:#8fb4cc; stroke-width:1.4; }
+    .prep   { fill:#f4f7fb; stroke:#a9bdce; stroke-width:1.4; }
+    .service{ fill:#e8f1fb; stroke:#4d82ad; stroke-width:1.5; }
+    .advisor{ fill:#e8f7f2; stroke:#5b9b84; stroke-width:1.5; }
+    .node-t { font-size:13px; font-weight:600; }
+    .node-s { font-size:11px; fill:#4b647c; }
+    .edge   { stroke:#68879e; stroke-width:1.5; fill:none; marker-end:url(#arrow); }
+    .elabel { fill:#43607a; font-size:10.5px; }
+    .elabel-bg { fill:#ffffff; opacity:0.9; }
+    text    { dominant-baseline:middle; }
+    .ctr    { text-anchor:middle; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#68879e"/>
+    </marker>
+  </defs>
+
+  <text x="640" y="30" class="ctr" font-size="20" font-weight="700">TransferReady — Architecture</text>
+  <text x="640" y="52" class="ctr" font-size="12" fill="#4b647c">Synthetic data + firm procedures → AWS services → advisor dashboard &amp; reviewed draft</text>
+
+  <!-- ===================== Lanes =====================
+       Lane columns (x,width):
+         Inputs:   40  .. 220   (center 130)
+         Prep:    260  .. 440   (center 350)
+         Services:480  ..1000   (left col center 580, right col center 820)
+         Advisor:1040 ..1240   (center 1140)
+       Row bands (vertical centers): top=200, mid=380, bottom=560
+  -->
+  <rect class="lane" x="40"   y="80" width="190" height="640" rx="10"/>
+  <text x="135"  y="104" class="ctr lane-title">Synthetic inputs</text>
+  <rect class="lane" x="250"  y="80" width="190" height="640" rx="10"/>
+  <text x="345"  y="104" class="ctr lane-title">Preparation</text>
+  <rect class="lane" x="460"  y="80" width="560" height="640" rx="10"/>
+  <text x="740"  y="104" class="ctr lane-title">TransferReady services on AWS</text>
+  <rect class="lane" x="1040" y="80" width="200" height="640" rx="10"/>
+  <text x="1140" y="104" class="ctr lane-title">Advisor experience</text>
+
+  <!-- ===================== Inputs ===================== -->
+  <g>
+    <rect class="input" x="55" y="165" width="160" height="70" rx="8"/>
+    <text x="135" y="188" class="ctr node-t">Client &amp; transfer</text>
+    <text x="135" y="206" class="ctr node-t">fixtures</text>
+    <text x="135" y="224" class="ctr node-s">seedData.mjs</text>
+
+    <rect class="input" x="55" y="525" width="160" height="70" rx="8"/>
+    <text x="135" y="548" class="ctr node-t">Procedure guides</text>
+    <text x="135" y="566" class="ctr node-t">&amp; requirements</text>
+    <text x="135" y="584" class="ctr node-s">knowledge/*.md</text>
+  </g>
+
+  <!-- ===================== Prep ===================== -->
+  <g>
+    <rect class="prep" x="265" y="165" width="160" height="70" rx="8"/>
+    <text x="345" y="186" class="ctr node-t">Seed &amp; load</text>
+    <text x="345" y="204" class="ctr node-s">BatchWriteItem</text>
+    <text x="345" y="222" class="ctr node-s">node data/seed.mjs</text>
+
+    <rect class="prep" x="265" y="525" width="160" height="70" rx="8"/>
+    <text x="345" y="546" class="ctr node-t">Upload &amp; ingest</text>
+    <text x="345" y="564" class="ctr node-s">s3 sync →</text>
+    <text x="345" y="582" class="ctr node-s">KB ingestion job</text>
+  </g>
+
+  <!-- ===================== AWS services =====================
+       Left col  x=505 w=150 (center 580)
+       Right col x=735 w=170 (center 820)
+       Rows: top y=165 h70 (c200), mid y=345 h70 (c380), bottom y=525 h70 (c560)
+  -->
+  <g>
+    <!-- left column -->
+    <rect class="service" x="505" y="165" width="150" height="70" rx="8"/>
+    <text x="580" y="186" class="ctr node-t">DynamoDB</text>
+    <text x="580" y="204" class="ctr node-s">5 tables</text>
+    <text x="580" y="222" class="ctr node-s">transfer records</text>
+
+    <rect class="service" x="505" y="525" width="150" height="70" rx="8"/>
+    <text x="580" y="546" class="ctr node-t">S3</text>
+    <text x="580" y="564" class="ctr node-s">source documents</text>
+    <text x="580" y="582" class="ctr node-s">(versioned)</text>
+
+    <!-- right column -->
+    <rect class="service" x="735" y="165" width="170" height="70" rx="8"/>
+    <text x="820" y="186" class="ctr node-t">Backend API</text>
+    <text x="820" y="204" class="ctr node-s">Node/Express</text>
+    <text x="820" y="222" class="ctr node-s">context builder</text>
+
+    <rect class="service" x="735" y="345" width="170" height="70" rx="8"/>
+    <text x="820" y="372" class="ctr node-t">Rules-based</text>
+    <text x="820" y="390" class="ctr node-t">risk engine</text>
+
+    <rect class="service" x="735" y="525" width="170" height="70" rx="8"/>
+    <text x="820" y="546" class="ctr node-t">Bedrock Knowledge Base</text>
+    <text x="820" y="564" class="ctr node-s">S3 Vectors retrieval</text>
+    <text x="820" y="582" class="ctr node-s">(RAG grounding)</text>
+
+    <rect class="service" x="735" y="635" width="170" height="60" rx="8"/>
+    <text x="820" y="658" class="ctr node-t">Amazon Bedrock · Sonnet 4.5</text>
+    <text x="820" y="676" class="ctr node-s">grounded explanation + draft</text>
+  </g>
+
+  <!-- ===================== Advisor ===================== -->
+  <g>
+    <rect class="advisor" x="1055" y="165" width="170" height="70" rx="8"/>
+    <text x="1140" y="190" class="ctr node-t">Prioritized dashboard</text>
+    <text x="1140" y="210" class="ctr node-s">risk-sorted transfers</text>
+
+    <rect class="advisor" x="1055" y="345" width="170" height="70" rx="8"/>
+    <text x="1140" y="368" class="ctr node-t">Transfer detail</text>
+    <text x="1140" y="386" class="ctr node-s">facts, reasons,</text>
+    <text x="1140" y="402" class="ctr node-s">citations</text>
+
+    <rect class="advisor" x="1055" y="525" width="170" height="70" rx="8"/>
+    <text x="1140" y="548" class="ctr node-t">Advisor-reviewed</text>
+    <text x="1140" y="566" class="ctr node-t">follow-up draft</text>
+    <text x="1140" y="584" class="ctr node-s">(approve before send)</text>
+  </g>
+
+  <!-- ===================== Edges ===================== -->
+  <!-- inputs -> prep (same rows, horizontal) -->
+  <path class="edge" d="M215 200 H265"/>
+  <path class="edge" d="M215 560 H265"/>
+
+  <!-- prep -> services (horizontal) -->
+  <path class="edge" d="M425 200 H505"/>
+  <rect class="elabel-bg" x="446" y="183" width="38" height="14"/>
+  <text x="465" y="190" class="ctr elabel">write</text>
+
+  <path class="edge" d="M425 560 H505"/>
+  <rect class="elabel-bg" x="440" y="543" width="50" height="14"/>
+  <text x="465" y="550" class="ctr elabel">publish</text>
+
+  <!-- DynamoDB -> API (horizontal, top row) -->
+  <path class="edge" d="M655 200 H735"/>
+  <rect class="elabel-bg" x="660" y="183" width="72" height="14"/>
+  <text x="696" y="190" class="ctr elabel">verified facts</text>
+
+  <!-- S3 -> KB (horizontal, bottom row) -->
+  <path class="edge" d="M655 560 H735"/>
+  <rect class="elabel-bg" x="658" y="543" width="76" height="14"/>
+  <text x="696" y="550" class="ctr elabel">chunk+embed</text>
+
+  <!-- API <-> risk engine: short center pair, spans only the API/risk gap (y235->345) -->
+  <path class="edge" d="M805 235 V345"/>
+  <rect class="elabel-bg" x="748" y="283" width="52" height="14"/>
+  <text x="774" y="290" class="ctr elabel">facts →</text>
+
+  <path class="edge" d="M835 345 V235"/>
+  <rect class="elabel-bg" x="840" y="283" width="90" height="14"/>
+  <text x="885" y="290" class="ctr elabel">← score+reasons</text>
+
+  <!-- API <-> KB: routed around the risk engine via the OUTER edges of the lane,
+       so they never cross or touch the risk-engine box.
+       Left track x=690 (outside risk box left edge 735): API down to KB.
+       Right track x=950 (outside risk box right edge 905): KB up to API. -->
+  <path class="edge" d="M770 235 H690 V525 H735"/>
+  <rect class="elabel-bg" x="652" y="373" width="76" height="14"/>
+  <text x="690" y="380" class="ctr elabel">blocker query</text>
+
+  <path class="edge" d="M905 525 H985 V235 H870"/>
+  <rect class="elabel-bg" x="947" y="300" width="76" height="14"/>
+  <text x="985" y="307" class="ctr elabel">cited passages</text>
+
+  <!-- KB <-> Bedrock model (vertical, short link) -->
+  <path class="edge" d="M820 595 V635"/>
+
+  <!-- API -> dashboard (horizontal, top row) -->
+  <path class="edge" d="M905 200 H1055"/>
+  <rect class="elabel-bg" x="912" y="183" width="138" height="14"/>
+  <text x="981" y="190" class="ctr elabel">GET /api/transfers</text>
+
+  <!-- risk engine -> detail (horizontal, mid row; starts right of the cited-passages track) -->
+  <path class="edge" d="M905 380 H1055"/>
+  <rect class="elabel-bg" x="1000" y="363" width="92" height="14"/>
+  <text x="1046" y="370" class="ctr elabel">facts + risk + AI</text>
+
+  <!-- Bedrock -> follow-up draft (routed to advisor bottom row) -->
+  <path class="edge" d="M905 665 H970 V560 H1055"/>
+  <rect class="elabel-bg" x="978" y="543" width="74" height="14"/>
+  <text x="1015" y="550" class="ctr elabel">reviewed draft</text>
+
+  <!-- advisor internal flow: dashboard -> detail -> review -->
+  <path class="edge" d="M1140 235 V345"/>
+  <path class="edge" d="M1140 415 V525"/>
+</svg>
